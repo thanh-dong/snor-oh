@@ -205,6 +205,7 @@ struct OhhTab: View {
 
     @State private var editingNickname = ""
     @State private var nicknameChanged = false
+    @State private var showSmartImport = false
 
     private static let snorohType = UTType(filenameExtension: "snoroh") ?? .data
 
@@ -268,6 +269,10 @@ struct OhhTab: View {
 
             Section("Custom Ohhs") {
                 HStack {
+                    Button("Smart Import") {
+                        showSmartImport = true
+                    }
+
                     Button("Import .snoroh") {
                         importSnorohFile()
                     }
@@ -291,6 +296,9 @@ struct OhhTab: View {
         .padding()
         .onAppear {
             editingNickname = nickname
+        }
+        .sheet(isPresented: $showSmartImport) {
+            SmartImportSheet()
         }
     }
 
