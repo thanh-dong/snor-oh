@@ -146,6 +146,26 @@ enum MCPInstaller {
         }
     }
 
+    // MARK: - Status
+
+    static var isServerInstalled: Bool {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        return FileManager.default.fileExists(
+            atPath: home.appendingPathComponent(".snor-oh/mcp/server.mjs").path
+        )
+    }
+
+    static var isRegistered: Bool {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let configURL = home.appendingPathComponent(".claude.json")
+        guard let data = try? Data(contentsOf: configURL),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let servers = json["mcpServers"] as? [String: Any] else {
+            return false
+        }
+        return servers["snor-oh"] != nil
+    }
+
     // MARK: - Private
 
     private static func findBundledScript(_ filename: String) -> URL? {

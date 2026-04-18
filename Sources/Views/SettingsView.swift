@@ -40,9 +40,52 @@ struct GeneralTab: View {
     @AppStorage(DefaultsKey.trayVisible) private var trayVisible = true
     @State private var autoStartEnabled = false
     @State private var autoStartError: String?
+    @State private var mcpInstalled = false
+    @State private var mcpRegistered = false
+    @State private var mcpInstalling = false
 
     var body: some View {
         Form {
+            Section("Claude Code Integration") {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            Image(systemName: mcpInstalled ? "checkmark.circle.fill" : "xmark.circle")
+                                .foregroundStyle(mcpInstalled ? .green : .red)
+                                .font(.caption)
+                            Text("MCP Server")
+                                .font(.callout)
+                            Text(mcpInstalled ? "installed" : "not installed")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        HStack(spacing: 6) {
+                            Image(systemName: mcpRegistered ? "checkmark.circle.fill" : "xmark.circle")
+                                .foregroundStyle(mcpRegistered ? .green : .red)
+                                .font(.caption)
+                            Text("Claude Code")
+                                .font(.callout)
+                            Text(mcpRegistered ? "registered" : "not registered")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                    Button {
+                        installMCP()
+                    } label: {
+                        if mcpInstalling {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Text(mcpInstalled && mcpRegistered ? "Reinstall" : "Install")
+                        }
+                    }
+                    .disabled(mcpInstalling)
+                }
+                .help("Installs MCP server to ~/.snor-oh/mcp/ and registers in ~/.claude.json")
+            }
+
             Section("Appearance") {
                 Picker("Theme", selection: $theme) {
                     Text("Dark").tag("dark")
@@ -92,6 +135,7 @@ struct GeneralTab: View {
         .padding()
         .onAppear {
             autoStartEnabled = SMAppService.mainApp.status == .enabled
+            refreshMCPStatus()
         }
         .alert("Auto-Start Failed", isPresented: .init(
             get: { autoStartError != nil },
@@ -100,6 +144,25 @@ struct GeneralTab: View {
             Button("OK") { autoStartError = nil }
         } message: {
             Text(autoStartError ?? "")
+        }
+    }
+
+    private func refreshMCPStatus() {
+        mcpInstalled = MCPInstaller.isServerInstalled
+        mcpRegistered = MCPInstaller.isRegistered
+    }
+
+    private func installMCP() {
+        mcpInstalling = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            MCPInstaller.installServer()
+            MCPInstaller.registerServer()
+            MCPInstaller.installShellHooks()
+            ClaudeHooks.migrate()
+            DispatchQueue.main.async {
+                mcpInstalling = false
+                refreshMCPStatus()
+            }
         }
     }
 

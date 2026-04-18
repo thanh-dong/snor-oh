@@ -214,9 +214,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // First launch: show setup wizard (it handles MCP install + hooks)
             showSetupWizard()
         } else {
-            // Subsequent launches: update MCP server + shell hooks + migrate Claude hooks
+            // Subsequent launches: update MCP server + ensure registered + shell hooks + hooks
             DispatchQueue.global(qos: .utility).async {
                 MCPInstaller.installServer()
+                MCPInstaller.registerServer()
                 MCPInstaller.installShellHooks()
                 ClaudeHooks.migrate()
             }
