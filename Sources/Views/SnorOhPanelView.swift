@@ -227,7 +227,7 @@ struct SnorOhPanelView: View {
     private var emptyState: some View {
         VStack(spacing: 6) {
             AnimatedSpriteView(engine: spriteEngine)
-                .frame(width: mascotSize, height: mascotSize)
+                .frame(width: spriteSize, height: spriteSize)
                 .shadow(color: glowColor, radius: glowMode == "off" ? 0 : 8)
             Text("No active sessions")
                 .font(.system(size: 11, weight: .medium))
@@ -243,26 +243,30 @@ struct SnorOhPanelView: View {
     /// Fixed square container size for the mascot, based on panel size tier.
     private var mascotContainerSize: CGFloat {
         switch size {
-        case .compact: return 64
-        case .regular: return 80
-        case .large:   return 96
+        case .compact: return 72
+        case .regular: return 88
+        case .large:   return 104
         }
+    }
+
+    /// Inset for glow room — sprite is this much smaller than container on each side.
+    private var glowInset: CGFloat { glowMode == "off" ? 4 : 10 }
+
+    /// Sprite size: scale-aware, but clamped to fit within container minus glow inset.
+    private var spriteSize: CGFloat {
+        let maxSprite = mascotContainerSize - glowInset * 2
+        return min(mascotSize, maxSprite)
     }
 
     private var contentArea: some View {
         HStack(alignment: .center, spacing: 0) {
-            // Fixed square container — mascot scaled to fit within it
+            // Fixed square container — sprite centered with glow room
             ZStack {
                 AnimatedSpriteView(engine: spriteEngine)
-                    .frame(
-                        width: min(mascotSize, mascotContainerSize),
-                        height: min(mascotSize, mascotContainerSize)
-                    )
+                    .frame(width: spriteSize, height: spriteSize)
                     .shadow(color: glowColor, radius: glowMode == "off" ? 0 : 8)
             }
             .frame(width: mascotContainerSize, height: mascotContainerSize)
-            .clipped()
-            .padding(4)
 
             // Project list
             VStack(spacing: 4) {
