@@ -325,9 +325,8 @@ struct SmartImportSheet: View {
 
     private func scaleThumbnail(_ image: CGImage, size: Int) -> CGImage? {
         guard let ctx = SmartImport.createRGBAContext(width: size, height: size) else { return nil }
-        // Flip so image renders right-side-up (CG default is y=0 at bottom)
-        ctx.translateBy(x: 0, y: CGFloat(size))
-        ctx.scaleBy(x: 1, y: -1)
+        // No flip needed: CG draws image right-side-up in default coords,
+        // and makeImage() produces row 0 = visual top for SwiftUI display.
         let scale = min(CGFloat(size) / CGFloat(image.width),
                        CGFloat(size) / CGFloat(image.height))
         let sw = Int((CGFloat(image.width) * scale).rounded())
