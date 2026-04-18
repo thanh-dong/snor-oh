@@ -135,11 +135,11 @@ final class PeerDiscovery {
 
         // Extract TXT record
         var nickname = "Unknown"
-        var pet = "rottweiler"
+        var pet = "sprite"
         var httpPort: UInt16 = 1234
         if case .bonjour(let txtRecord) = result.metadata {
             nickname = txtRecord["nickname"] ?? "Unknown"
-            pet = txtRecord["pet"] ?? "rottweiler"
+            pet = txtRecord["pet"] ?? "sprite"
             if let portStr = txtRecord["port"], let p = UInt16(portStr) {
                 httpPort = p
             }

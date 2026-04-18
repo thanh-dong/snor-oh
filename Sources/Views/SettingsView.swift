@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 
 // MARK: - Settings Window
 
-/// Standard macOS settings window with General, Mime, and About tabs.
+/// Standard macOS settings window with General, Ohh, Claude Code, and About tabs.
 struct SettingsView: View {
     let sessionManager: SessionManager
     let spriteEngine: SpriteEngine
@@ -14,8 +14,8 @@ struct SettingsView: View {
             GeneralTab(sessionManager: sessionManager)
                 .tabItem { Label("General", systemImage: "gearshape") }
 
-            MimeTab(sessionManager: sessionManager, spriteEngine: spriteEngine)
-                .tabItem { Label("Mime", systemImage: "pawprint") }
+            OhhTab(sessionManager: sessionManager, spriteEngine: spriteEngine)
+                .tabItem { Label("Ohh", systemImage: "pawprint") }
 
             ClaudeCodeTab()
                 .tabItem { Label("Claude Code", systemImage: "terminal") }
@@ -43,7 +43,6 @@ struct GeneralTab: View {
 
     var body: some View {
         Form {
-            // MARK: Appearance
             Section("Appearance") {
                 Picker("Theme", selection: $theme) {
                     Text("Dark").tag("dark")
@@ -60,7 +59,6 @@ struct GeneralTab: View {
                 .pickerStyle(.segmented)
             }
 
-            // MARK: Session Panel
             Section("Session Panel") {
                 Picker("Card Size", selection: $panelSize) {
                     Text("Compact").tag("compact")
@@ -70,7 +68,6 @@ struct GeneralTab: View {
                 .pickerStyle(.segmented)
             }
 
-            // MARK: Behavior
             Section("Behavior") {
                 Toggle("Speech Bubbles", isOn: $bubbleEnabled)
 
@@ -81,7 +78,6 @@ struct GeneralTab: View {
 
                 Toggle("Hide from Dock", isOn: $hideDock)
                     .onChange(of: hideDock) { _, hide in
-                        // NSApp.setActivationPolicy is main-thread only
                         DispatchQueue.main.async {
                             NSApp.setActivationPolicy(hide ? .accessory : .regular)
                         }
@@ -115,21 +111,21 @@ struct GeneralTab: View {
                 try SMAppService.mainApp.unregister()
             }
         } catch {
-            autoStartEnabled = !enabled  // Revert UI
+            autoStartEnabled = !enabled
             autoStartError = error.localizedDescription
         }
     }
 }
 
-// MARK: - Mime Tab
+// MARK: - Ohh Tab
 
-struct MimeTab: View {
+struct OhhTab: View {
     let sessionManager: SessionManager
     let spriteEngine: SpriteEngine
 
     @AppStorage(DefaultsKey.nickname) private var nickname = "Buddy"
     @AppStorage(DefaultsKey.displayScale) private var displayScale = 1.0
-    @AppStorage(DefaultsKey.pet) private var selectedPet = "rottweiler"
+    @AppStorage(DefaultsKey.pet) private var selectedPet = "sprite"
 
     @State private var editingNickname = ""
     @State private var nicknameChanged = false
@@ -138,7 +134,6 @@ struct MimeTab: View {
 
     var body: some View {
         Form {
-            // MARK: Identity
             Section("Identity") {
                 HStack {
                     TextField("Nickname", text: $editingNickname)
@@ -159,7 +154,6 @@ struct MimeTab: View {
                 }
             }
 
-            // MARK: Display Size
             Section("Display Size") {
                 Picker("Scale", selection: $displayScale) {
                     Text("Tiny (0.5x)").tag(0.5)
@@ -170,7 +164,6 @@ struct MimeTab: View {
                 .pickerStyle(.segmented)
             }
 
-            // MARK: Pet Selection
             Section("Pet") {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))], spacing: 12) {
                     ForEach(SpriteConfig.builtInPets, id: \.self) { pet in
@@ -184,22 +177,20 @@ struct MimeTab: View {
                         }
                     }
 
-                    // Custom pets
-                    ForEach(CustomMimeManager.shared.mimes) { mime in
+                    ForEach(CustomOhhManager.shared.ohhs) { ohh in
                         PetCard(
-                            petID: mime.id,
-                            name: mime.name,
-                            isSelected: selectedPet == mime.id
+                            petID: ohh.id,
+                            name: ohh.name,
+                            isSelected: selectedPet == ohh.id
                         ) {
-                            selectedPet = mime.id
-                            sessionManager.pet = mime.id
+                            selectedPet = ohh.id
+                            sessionManager.pet = ohh.id
                         }
                     }
                 }
             }
 
-            // MARK: Custom Mime Actions
-            Section("Custom Mimes") {
+            Section("Custom Ohhs") {
                 HStack {
                     Button("Import .snoroh") {
                         importSnorohFile()
@@ -207,12 +198,12 @@ struct MimeTab: View {
 
                     Spacer()
 
-                    if !CustomMimeManager.shared.mimes.isEmpty {
+                    if !CustomOhhManager.shared.ohhs.isEmpty {
                         Menu("Manage") {
-                            ForEach(CustomMimeManager.shared.mimes) { mime in
-                                Menu(mime.name) {
-                                    Button("Export") { exportMime(mime.id) }
-                                    Button("Delete", role: .destructive) { deleteMime(mime.id) }
+                            ForEach(CustomOhhManager.shared.ohhs) { ohh in
+                                Menu(ohh.name) {
+                                    Button("Export") { exportOhh(ohh.id) }
+                                    Button("Delete", role: .destructive) { deleteOhh(ohh.id) }
                                 }
                             }
                         }
@@ -236,7 +227,7 @@ struct MimeTab: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
         do {
-            try MimeExporter.importMime(from: url)
+            try OhhExporter.importOhh(from: url)
         } catch {
             let alert = NSAlert()
             alert.messageText = "Import Failed"
@@ -246,17 +237,17 @@ struct MimeTab: View {
         }
     }
 
-    private func exportMime(_ id: String) {
-        guard let mime = CustomMimeManager.shared.mime(withID: id) else { return }
+    private func exportOhh(_ id: String) {
+        guard let ohh = CustomOhhManager.shared.ohh(withID: id) else { return }
 
         let panel = NSSavePanel()
-        panel.nameFieldStringValue = MimeExporter.defaultFilename(for: mime)
+        panel.nameFieldStringValue = OhhExporter.defaultFilename(for: ohh)
         panel.allowedContentTypes = [Self.snorohType]
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
         do {
-            try MimeExporter.export(mimeID: id, to: url)
+            try OhhExporter.export(ohhID: id, to: url)
         } catch {
             let alert = NSAlert()
             alert.messageText = "Export Failed"
@@ -266,9 +257,9 @@ struct MimeTab: View {
         }
     }
 
-    private func deleteMime(_ id: String) {
+    private func deleteOhh(_ id: String) {
         let alert = NSAlert()
-        alert.messageText = "Delete this custom mime?"
+        alert.messageText = "Delete this custom ohh?"
         alert.informativeText = "This action cannot be undone."
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Delete")
@@ -276,14 +267,13 @@ struct MimeTab: View {
 
         guard alert.runModal() == .alertFirstButtonReturn else { return }
 
-        // If the deleted mime is currently selected, switch to default
         if selectedPet == id {
-            let defaultPet = SpriteConfig.builtInPets.first ?? "rottweiler"
+            let defaultPet = SpriteConfig.builtInPets.first ?? "sprite"
             selectedPet = defaultPet
             sessionManager.pet = defaultPet
         }
 
-        CustomMimeManager.shared.deleteMime(id: id)
+        CustomOhhManager.shared.deleteOhh(id: id)
         SpriteCache.shared.purgeCustomPet(id)
     }
 }
@@ -329,7 +319,6 @@ struct PetCard: View {
         }
         .buttonStyle(.plain)
         .onAppear {
-            // Load a single static frame for preview (no running timer)
             let frames = SpriteCache.shared.frames(pet: petID, status: .idle)
             previewFrame = frames.first
         }

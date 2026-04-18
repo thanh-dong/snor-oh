@@ -7,7 +7,7 @@ import CoreGraphics
 /// Usage:
 ///   let engine = SpriteEngine()
 ///   engine.attach(to: imageView)
-///   engine.setPet("rottweiler")
+///   engine.setPet("sprite")
 ///   engine.setStatus(.busy)
 ///
 /// Main-thread only.
@@ -21,7 +21,7 @@ final class SpriteEngine {
 
     // MARK: - Configuration
 
-    private var pet: String = "rottweiler"
+    private var pet: String = "sprite"
     private var status: Status = .initializing
     private var frames: [CGImage] = []
     private var frameIndex: Int = 0

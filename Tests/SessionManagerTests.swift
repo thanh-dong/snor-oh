@@ -104,7 +104,7 @@ final class SessionManagerTests: XCTestCase {
         let sm = SessionManager()
         let visitor = VisitingDog(
             instanceName: "buddy-123",
-            pet: "dalmatian",
+            pet: "sprite",
             nickname: "Buddy",
             arrivedAt: nowSecs(),
             durationSecs: 15

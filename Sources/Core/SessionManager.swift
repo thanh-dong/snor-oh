@@ -35,7 +35,7 @@ final class SessionManager {
 
     // MARK: Identity
 
-    var pet: String = "rottweiler"
+    var pet: String = "sprite"
     var nickname: String = "Buddy"
     var httpPort: Int = 1234
 

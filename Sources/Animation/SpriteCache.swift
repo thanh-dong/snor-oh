@@ -10,67 +10,54 @@ final class SpriteCache {
     private var cache: [String: [CGImage]] = [:]
 
     /// Returns cached frames, or loads + extracts from the sprite sheet PNG.
-    ///
-    /// For custom pets, the SpriteConfig.sheet lookup (which reads CustomMimeManager)
-    /// is deferred until after the cache check, so cached hits avoid the singleton read.
     func frames(pet: String, status: Status) -> [CGImage] {
-        // For built-in pets, we can compute the key cheaply
-        // For custom pets, use a status-based key to check cache first
         let cacheKey: String
         if SpriteConfig.isCustomPet(pet) {
             cacheKey = "\(pet)/\(status.rawValue)"
         } else {
-            let (filename, _) = SpriteConfig.sheet(pet: pet, status: status)
-            cacheKey = "\(pet)/\(filename)"
+            let info = SpriteConfig.sheet(pet: pet, status: status)
+            cacheKey = "\(pet)/\(info.filename)"
         }
 
         if let cached = cache[cacheKey] {
             return cached
         }
 
-        // Cache miss — resolve full config and load
-        let (filename, frameCount) = SpriteConfig.sheet(pet: pet, status: status)
+        let info = SpriteConfig.sheet(pet: pet, status: status)
 
         let image: CGImage?
         if SpriteConfig.isCustomPet(pet) {
-            image = loadCustomSpriteSheet(fileName: filename)
+            image = loadCustomSpriteSheet(fileName: info.filename)
         } else {
-            image = loadSpriteSheet(named: filename)
+            image = loadSpriteSheet(named: info.filename, subdirectory: info.subdirectory)
         }
 
         guard let image else { return [] }
-
-        // Custom pets always use 128px frames (grid-packed by SmartImport)
-        let frameSize = SpriteConfig.isCustomPet(pet) ? 128 : SpriteConfig.frameSize(for: pet)
-        let extracted = extractFrames(from: image, frameSize: frameSize, count: frameCount)
+        let extracted = extractFrames(from: image, info: info)
         cache[cacheKey] = extracted
         return extracted
     }
 
-    /// Remove all cached frames (e.g., when switching pet).
     func purge() {
         cache.removeAll()
     }
 
-    /// Invalidate cached frames for a specific custom pet (e.g., after re-import).
     func purgeCustomPet(_ petID: String) {
         cache = cache.filter { !$0.key.hasPrefix("\(petID)/") }
     }
 
     // MARK: - Private
 
-    /// Load a custom sprite from ~/.snor-oh/custom-sprites/
     private func loadCustomSpriteSheet(fileName: String) -> CGImage? {
-        let url = CustomMimeManager.shared.spritePath(fileName: fileName)
+        let url = CustomOhhManager.shared.spritePath(fileName: fileName)
         return loadCGImage(from: url)
     }
 
-    private func loadSpriteSheet(named name: String) -> CGImage? {
-        // Try bundled resources first
-        if let url = Bundle.main.url(forResource: name, withExtension: "png", subdirectory: "Sprites") {
+    private func loadSpriteSheet(named name: String, subdirectory: String? = nil) -> CGImage? {
+        let subdir = subdirectory.map { "Sprites/\($0)" } ?? "Sprites"
+        if let url = Bundle.main.url(forResource: name, withExtension: "png", subdirectory: subdir) {
             return loadCGImage(from: url)
         }
-        // Fallback: search in bundle root (SPM copies into bundle)
         if let url = Bundle.main.url(forResource: name, withExtension: "png") {
             return loadCGImage(from: url)
         }
@@ -90,22 +77,16 @@ final class SpriteCache {
         return image
     }
 
-    private func extractFrames(from sheet: CGImage, frameSize: Int, count: Int) -> [CGImage] {
-        let cols = sheet.width / frameSize
-        guard cols > 0 else { return [] }
-
+    /// Extract frames from a sprite sheet using the sheet info.
+    /// Supports rectangular frames and row selection for multi-direction sheets.
+    private func extractFrames(from sheet: CGImage, info: SpriteSheetInfo) -> [CGImage] {
         var frames: [CGImage] = []
-        frames.reserveCapacity(count)
+        frames.reserveCapacity(info.frames)
 
-        for i in 0..<count {
-            let col = i % cols
-            let row = i / cols
-            let rect = CGRect(
-                x: col * frameSize,
-                y: row * frameSize,
-                width: frameSize,
-                height: frameSize
-            )
+        let y = info.row * info.frameHeight
+        for i in 0..<info.frames {
+            let x = i * info.frameWidth
+            let rect = CGRect(x: x, y: y, width: info.frameWidth, height: info.frameHeight)
             if let cropped = sheet.cropping(to: rect) {
                 frames.append(cropped)
             }

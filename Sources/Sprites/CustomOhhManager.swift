@@ -3,24 +3,24 @@ import Foundation
 /// Manages CRUD operations for custom pet sprites.
 ///
 /// Storage:
-/// - Metadata: `~/.snor-oh/custom-mimes.json`
+/// - Metadata: `~/.snor-oh/custom-ohhs.json`
 /// - Sprite files: `~/.snor-oh/custom-sprites/`
 ///
 /// Main-thread only (mutates @Observable state).
 @Observable
-final class CustomMimeManager {
+final class CustomOhhManager {
 
-    private(set) var mimes: [CustomMimeData] = []
+    private(set) var ohhs: [CustomOhhData] = []
 
     private let metadataFile: URL
     private let spritesDir: URL
 
-    static let shared = CustomMimeManager()
+    static let shared = CustomOhhManager()
 
     private init() {
         let home = FileManager.default.homeDirectoryForCurrentUser
         let base = home.appendingPathComponent(".snor-oh")
-        metadataFile = base.appendingPathComponent("custom-mimes.json")
+        metadataFile = base.appendingPathComponent("custom-ohhs.json")
         spritesDir = base.appendingPathComponent("custom-sprites")
     }
 
@@ -31,21 +31,19 @@ final class CustomMimeManager {
         guard FileManager.default.fileExists(atPath: metadataFile.path) else { return }
         do {
             let data = try Data(contentsOf: metadataFile)
-            mimes = try JSONDecoder().decode([CustomMimeData].self, from: data)
+            ohhs = try JSONDecoder().decode([CustomOhhData].self, from: data)
         } catch {
-            print("[custom-mimes] failed to load: \(error)")
+            print("[custom-ohhs] failed to load: \(error)")
         }
     }
 
     // MARK: - Create
 
-    /// Add a custom mime from per-status PNG files on disk.
     @discardableResult
-    func addMime(name: String, spriteFiles: [Status: (sourcePath: String, frames: Int)]) -> String? {
-        // Validate all statuses are present before writing anything
+    func addOhh(name: String, spriteFiles: [Status: (sourcePath: String, frames: Int)]) -> String? {
         for status in Status.allCases {
             guard spriteFiles[status] != nil else {
-                print("[custom-mimes] missing sprite for \(status.rawValue)")
+                print("[custom-ohhs] missing sprite for \(status.rawValue)")
                 return nil
             }
         }
@@ -54,7 +52,7 @@ final class CustomMimeManager {
         ensureDirectories()
 
         var written: [URL] = []
-        var sprites: [String: CustomMimeData.SpriteEntry] = [:]
+        var sprites: [String: CustomOhhData.SpriteEntry] = [:]
 
         for status in Status.allCases {
             let entry = spriteFiles[status]!
@@ -67,31 +65,28 @@ final class CustomMimeManager {
                 )
                 written.append(dest)
             } catch {
-                print("[custom-mimes] copy failed for \(status.rawValue): \(error)")
-                // Rollback: remove already-written files
+                print("[custom-ohhs] copy failed for \(status.rawValue): \(error)")
                 for url in written { try? FileManager.default.removeItem(at: url) }
                 return nil
             }
             sprites[status.rawValue] = .init(fileName: fileName, frames: entry.frames)
         }
 
-        let mime = CustomMimeData(id: id, name: name, sprites: sprites)
-        mimes.append(mime)
+        let ohh = CustomOhhData(id: id, name: name, sprites: sprites)
+        ohhs.append(ohh)
         persist()
         return id
     }
 
-    /// Add a custom mime from in-memory PNG blobs (used by Smart Import).
     @discardableResult
-    func addMimeFromBlobs(
+    func addOhhFromBlobs(
         name: String,
         spriteBlobs: [Status: (data: Data, frames: Int)],
         smartImportMeta: (sheetData: Data, frameInputs: [Status: String])? = nil
     ) -> String? {
-        // Validate all statuses are present before writing anything
         for status in Status.allCases {
             guard spriteBlobs[status] != nil else {
-                print("[custom-mimes] missing blob for \(status.rawValue)")
+                print("[custom-ohhs] missing blob for \(status.rawValue)")
                 return nil
             }
         }
@@ -100,7 +95,7 @@ final class CustomMimeManager {
         ensureDirectories()
 
         var written: [URL] = []
-        var sprites: [String: CustomMimeData.SpriteEntry] = [:]
+        var sprites: [String: CustomOhhData.SpriteEntry] = [:]
 
         for status in Status.allCases {
             let entry = spriteBlobs[status]!
@@ -110,21 +105,21 @@ final class CustomMimeManager {
                 try entry.data.write(to: dest, options: .atomic)
                 written.append(dest)
             } catch {
-                print("[custom-mimes] write failed for \(status.rawValue): \(error)")
+                print("[custom-ohhs] write failed for \(status.rawValue): \(error)")
                 for url in written { try? FileManager.default.removeItem(at: url) }
                 return nil
             }
             sprites[status.rawValue] = .init(fileName: fileName, frames: entry.frames)
         }
 
-        var meta: CustomMimeData.SmartImportMeta?
+        var meta: CustomOhhData.SmartImportMeta?
         if let smartImportMeta {
             let sheetFileName = "\(id)-source.png"
             let sheetDest = spritesDir.appendingPathComponent(sheetFileName)
             do {
                 try smartImportMeta.sheetData.write(to: sheetDest, options: .atomic)
             } catch {
-                print("[custom-mimes] write failed for source sheet: \(error)")
+                print("[custom-ohhs] write failed for source sheet: \(error)")
             }
             var inputs: [String: String] = [:]
             for (status, input) in smartImportMeta.frameInputs {
@@ -133,78 +128,69 @@ final class CustomMimeManager {
             meta = .init(sheetFileName: sheetFileName, frameInputs: inputs)
         }
 
-        let mime = CustomMimeData(id: id, name: name, sprites: sprites, smartImportMeta: meta)
-        mimes.append(mime)
+        let ohh = CustomOhhData(id: id, name: name, sprites: sprites, smartImportMeta: meta)
+        ohhs.append(ohh)
         persist()
         return id
     }
 
     // MARK: - Update
 
-    func updateMime(
+    func updateOhh(
         id: String,
         name: String,
         spriteFiles: [Status: (sourcePath: String?, frames: Int)]
     ) {
-        guard let idx = mimes.firstIndex(where: { $0.id == id }) else { return }
-        let existing = mimes[idx]
+        guard let idx = ohhs.firstIndex(where: { $0.id == id }) else { return }
+        let existing = ohhs[idx]
         ensureDirectories()
 
-        var sprites: [String: CustomMimeData.SpriteEntry] = [:]
+        var sprites: [String: CustomOhhData.SpriteEntry] = [:]
         for status in Status.allCases {
             if let entry = spriteFiles[status] {
                 if let sourcePath = entry.sourcePath {
-                    // Replace sprite file atomically
                     let fileName = "\(id)-\(status.rawValue).png"
                     let dest = spritesDir.appendingPathComponent(fileName)
                     let tmp = spritesDir.appendingPathComponent("\(fileName).tmp")
                     do {
                         try FileManager.default.copyItem(
-                            at: URL(fileURLWithPath: sourcePath),
-                            to: tmp
+                            at: URL(fileURLWithPath: sourcePath), to: tmp
                         )
                         _ = try FileManager.default.replaceItemAt(dest, withItemAt: tmp)
                     } catch {
-                        print("[custom-mimes] copy failed for \(status.rawValue): \(error)")
+                        print("[custom-ohhs] copy failed for \(status.rawValue): \(error)")
                         try? FileManager.default.removeItem(at: tmp)
                     }
                     sprites[status.rawValue] = .init(fileName: fileName, frames: entry.frames)
                 } else if let existingEntry = existing.sprite(for: status) {
-                    // Keep existing file, just update frame count
                     sprites[status.rawValue] = .init(fileName: existingEntry.fileName, frames: entry.frames)
                 }
             } else if let existingEntry = existing.sprite(for: status) {
-                // Status not in update map — preserve existing entry entirely
                 sprites[status.rawValue] = existingEntry
             }
         }
 
-        mimes[idx] = CustomMimeData(
-            id: id,
-            name: name,
-            sprites: sprites,
-            smartImportMeta: existing.smartImportMeta
-        )
+        ohhs[idx] = CustomOhhData(id: id, name: name, sprites: sprites,
+                                  smartImportMeta: existing.smartImportMeta)
         SpriteCache.shared.purgeCustomPet(id)
         persist()
     }
 
-    func updateMimeFromSmartImport(
+    func updateOhhFromSmartImport(
         id: String,
         name: String,
         spriteBlobs: [Status: (data: Data, frames: Int)],
         sheetData: Data,
         frameInputs: [Status: String]
     ) {
-        guard let idx = mimes.firstIndex(where: { $0.id == id }) else { return }
+        guard let idx = ohhs.firstIndex(where: { $0.id == id }) else { return }
         ensureDirectories()
 
-        // Write to temp files first, then rename — enables full rollback on failure
         var written: [URL] = []
-        var sprites: [String: CustomMimeData.SpriteEntry] = [:]
+        var sprites: [String: CustomOhhData.SpriteEntry] = [:]
         for status in Status.allCases {
             guard let entry = spriteBlobs[status] else {
-                print("[custom-mimes] missing blob for \(status.rawValue) in smart import update")
+                print("[custom-ohhs] missing blob for \(status.rawValue)")
                 for url in written { try? FileManager.default.removeItem(at: url) }
                 return
             }
@@ -214,7 +200,7 @@ final class CustomMimeManager {
                 try entry.data.write(to: dest, options: .atomic)
                 written.append(dest)
             } catch {
-                print("[custom-mimes] write failed for \(status.rawValue): \(error)")
+                print("[custom-ohhs] write failed for \(status.rawValue): \(error)")
                 for url in written { try? FileManager.default.removeItem(at: url) }
                 return
             }
@@ -226,14 +212,10 @@ final class CustomMimeManager {
         try? sheetData.write(to: sheetDest, options: .atomic)
 
         var inputs: [String: String] = [:]
-        for (status, input) in frameInputs {
-            inputs[status.rawValue] = input
-        }
+        for (status, input) in frameInputs { inputs[status.rawValue] = input }
 
-        mimes[idx] = CustomMimeData(
-            id: id,
-            name: name,
-            sprites: sprites,
+        ohhs[idx] = CustomOhhData(
+            id: id, name: name, sprites: sprites,
             smartImportMeta: .init(sheetFileName: sheetFileName, frameInputs: inputs)
         )
         SpriteCache.shared.purgeCustomPet(id)
@@ -242,39 +224,31 @@ final class CustomMimeManager {
 
     // MARK: - Delete
 
-    func deleteMime(id: String) {
-        guard let idx = mimes.firstIndex(where: { $0.id == id }) else { return }
-        let mime = mimes[idx]
-
-        // Remove sprite files
-        for (_, entry) in mime.sprites {
-            let path = spritesDir.appendingPathComponent(entry.fileName)
-            try? FileManager.default.removeItem(at: path)
+    func deleteOhh(id: String) {
+        guard let idx = ohhs.firstIndex(where: { $0.id == id }) else { return }
+        let ohh = ohhs[idx]
+        for (_, entry) in ohh.sprites {
+            try? FileManager.default.removeItem(at: spritesDir.appendingPathComponent(entry.fileName))
         }
-        // Remove source sheet if present
-        if let sheetName = mime.smartImportMeta?.sheetFileName {
-            let path = spritesDir.appendingPathComponent(sheetName)
-            try? FileManager.default.removeItem(at: path)
+        if let sheetName = ohh.smartImportMeta?.sheetFileName {
+            try? FileManager.default.removeItem(at: spritesDir.appendingPathComponent(sheetName))
         }
-
-        mimes.remove(at: idx)
+        ohhs.remove(at: idx)
         persist()
     }
 
     // MARK: - Lookup
 
-    func mime(withID id: String) -> CustomMimeData? {
-        mimes.first { $0.id == id }
+    func ohh(withID id: String) -> CustomOhhData? {
+        ohhs.first { $0.id == id }
     }
 
-    /// Full file path for a custom sprite file.
     func spritePath(fileName: String) -> URL {
         spritesDir.appendingPathComponent(fileName)
     }
 
-    /// All available pet IDs (built-in + custom).
     var allPetIDs: [String] {
-        SpriteConfig.builtInPets + mimes.map(\.id)
+        SpriteConfig.builtInPets + ohhs.map(\.id)
     }
 
     // MARK: - Private
@@ -285,10 +259,10 @@ final class CustomMimeManager {
 
     private func persist() {
         do {
-            let data = try JSONEncoder().encode(mimes)
+            let data = try JSONEncoder().encode(ohhs)
             try data.write(to: metadataFile, options: .atomic)
         } catch {
-            print("[custom-mimes] failed to persist: \(error)")
+            print("[custom-ohhs] failed to persist: \(error)")
         }
     }
 }

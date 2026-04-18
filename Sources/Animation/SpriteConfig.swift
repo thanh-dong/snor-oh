@@ -1,7 +1,6 @@
 import Foundation
 
 /// Sprite sheet configuration per character and status.
-/// Maps each (pet, status) pair to a sprite sheet filename and frame count.
 enum SpriteConfig {
 
     // MARK: - Constants
@@ -13,74 +12,71 @@ enum SpriteConfig {
 
     // MARK: - Built-in Characters
 
-    /// All built-in character IDs.
-    static let builtInPets = ["rottweiler", "dalmatian", "samurai", "hancock"]
-
-    /// Native frame size in the sprite sheet PNG.
-    static func frameSize(for pet: String) -> Int {
-        switch pet {
-        case "rottweiler", "dalmatian": return 64
-        case "samurai", "hancock": return 128
-        default: return 128
-        }
-    }
+    static let builtInPets = ["sprite", "samurai", "hancock"]
 
     /// Returns true if the pet ID refers to a custom (non-built-in) pet.
     static func isCustomPet(_ pet: String) -> Bool {
         pet.hasPrefix("custom-")
     }
 
-    /// Sprite sheet filename and frame count for a given (pet, status) pair.
-    /// For custom pets, looks up CustomMimeManager.
-    static func sheet(pet: String, status: Status) -> (filename: String, frames: Int) {
+    /// Sprite sheet info for a given (pet, status) pair.
+    static func sheet(pet: String, status: Status) -> SpriteSheetInfo {
         switch pet {
-        case "rottweiler":
+        case "sprite":
             switch status {
-            case .disconnected:  return ("SleepDogg",         8)
-            case .busy:          return ("RottweilerSniff",  31)
-            case .service:       return ("RottweilerBark",   12)
-            case .idle:          return ("Sittiing",          8)
-            case .searching:     return ("RottweilerIdle",    6)
-            case .initializing:  return ("RottweilerIdle",    6)
-            case .visiting:      return ("Sittiing",          8)
-            }
-        case "dalmatian":
-            switch status {
-            case .disconnected:  return ("SleepDogg",           8)
-            case .busy:          return ("DalmatianSniff",     26)
-            case .service:       return ("DalmatianBark",      12)
-            case .idle:          return ("DalmatianSitting",    8)
-            case .searching:     return ("DalmatianIdle",       7)
-            case .initializing:  return ("DalmatianIdle",       7)
-            case .visiting:      return ("DalmatianSitting",    8)
+            case .idle:          return .init(filename: "Idle-Anim",   frames: 6,  frameWidth: 32, frameHeight: 64, row: 0, subdirectory: "sprite")
+            case .busy:          return .init(filename: "Charge-Anim", frames: 10, frameWidth: 32, frameHeight: 48, row: 0, subdirectory: "sprite")
+            case .service:       return .init(filename: "Hop-Anim",    frames: 10, frameWidth: 32, frameHeight: 96, row: 0, subdirectory: "sprite")
+            case .disconnected:  return .init(filename: "Sleep-Anim",  frames: 2,  frameWidth: 40, frameHeight: 24, row: 0, subdirectory: "sprite")
+            case .searching:     return .init(filename: "Walk-Anim",   frames: 4,  frameWidth: 32, frameHeight: 48, row: 0, subdirectory: "sprite")
+            case .initializing:  return .init(filename: "Idle-Anim",   frames: 6,  frameWidth: 32, frameHeight: 64, row: 0, subdirectory: "sprite")
+            case .visiting:      return .init(filename: "Swing-Anim",  frames: 9,  frameWidth: 72, frameHeight: 80, row: 0, subdirectory: "sprite")
             }
         case "samurai":
             switch status {
-            case .disconnected:  return ("SamuraiSleep",    3)
-            case .busy:          return ("SamuraiBark",     6)
-            case .service:       return ("SamuraiSniff",    8)
-            case .idle:          return ("SamuraiSitting",  6)
-            case .searching:     return ("SamuraiIdle",     8)
-            case .initializing:  return ("SamuraiIdle",     8)
-            case .visiting:      return ("SamuraiSitting",  6)
+            case .disconnected:  return .square("SamuraiSleep",   3,  128)
+            case .busy:          return .square("SamuraiBark",    6,  128)
+            case .service:       return .square("SamuraiSniff",   8,  128)
+            case .idle:          return .square("SamuraiSitting", 6,  128)
+            case .searching:     return .square("SamuraiIdle",    8,  128)
+            case .initializing:  return .square("SamuraiIdle",    8,  128)
+            case .visiting:      return .square("SamuraiSitting", 6,  128)
             }
         case "hancock":
             switch status {
-            case .disconnected:  return ("HancockSleep",    1)
-            case .busy:          return ("HancockBark",     9)
-            case .service:       return ("HancockSniff",   18)
-            case .idle:          return ("HancockSitting", 10)
-            case .searching:     return ("HancockIdle",    17)
-            case .initializing:  return ("HancockIdle",    17)
-            case .visiting:      return ("HancockSitting", 10)
+            case .disconnected:  return .square("HancockSleep",    1, 128)
+            case .busy:          return .square("HancockBark",     9, 128)
+            case .service:       return .square("HancockSniff",   18, 128)
+            case .idle:          return .square("HancockSitting", 10, 128)
+            case .searching:     return .square("HancockIdle",    17, 128)
+            case .initializing:  return .square("HancockIdle",    17, 128)
+            case .visiting:      return .square("HancockSitting", 10, 128)
             }
         default:
-            // Custom pets: look up from CustomMimeManager
-            if let mime = CustomMimeManager.shared.mime(withID: pet),
-               let entry = mime.sprite(for: status) {
-                return (entry.fileName, entry.frames)
+            // Custom pets: look up from CustomOhhManager
+            if let ohh = CustomOhhManager.shared.ohh(withID: pet),
+               let entry = ohh.sprite(for: status) {
+                return .square(entry.fileName, entry.frames, 128)
             }
-            return ("unknown", 1)
+            return .square("unknown", 1, 128)
         }
+    }
+}
+
+// MARK: - Sheet Info
+
+struct SpriteSheetInfo {
+    let filename: String
+    let frames: Int
+    let frameWidth: Int
+    let frameHeight: Int
+    let row: Int             // row to extract (0 = front-facing)
+    let subdirectory: String? // e.g. "sprite" for Resources/Sprites/sprite/
+
+    /// Convenience for legacy square-frame sheets with no subdirectory.
+    static func square(_ filename: String, _ frames: Int, _ size: Int) -> SpriteSheetInfo {
+        SpriteSheetInfo(filename: filename, frames: frames,
+                        frameWidth: size, frameHeight: size,
+                        row: 0, subdirectory: nil)
     }
 }

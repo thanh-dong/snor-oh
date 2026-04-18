@@ -4,8 +4,8 @@ import Foundation
 ///
 /// Format: JSON with version, name, and base64-encoded PNG sprites for each status.
 /// Note: Export is lossy — source sheets and frame inputs (smartImportMeta) are NOT
-/// included. Imported mimes always open in Manual editor on re-edit.
-enum MimeExporter {
+/// included. Imported ohhs always open in Manual editor on re-edit.
+enum OhhExporter {
 
     // MARK: - Types
 
@@ -21,13 +21,13 @@ enum MimeExporter {
     }
 
     enum ExportError: Error, LocalizedError {
-        case mimeNotFound
+        case ohhNotFound
         case spriteReadFailed(status: String)
         case writeFailed(Error)
 
         var errorDescription: String? {
             switch self {
-            case .mimeNotFound: return "Mime not found"
+            case .ohhNotFound: return "Ohh not found"
             case .spriteReadFailed(let s): return "Failed to read sprite for \(s)"
             case .writeFailed(let e): return "Failed to write file: \(e.localizedDescription)"
             }
@@ -52,16 +52,15 @@ enum MimeExporter {
 
     // MARK: - Export
 
-    /// Export a custom mime to an .snoroh file at the given destination path.
-    static func export(mimeID: String, to destination: URL) throws {
-        let manager = CustomMimeManager.shared
-        guard let mime = manager.mime(withID: mimeID) else {
-            throw ExportError.mimeNotFound
+    static func export(ohhID: String, to destination: URL) throws {
+        let manager = CustomOhhManager.shared
+        guard let ohh = manager.ohh(withID: ohhID) else {
+            throw ExportError.ohhNotFound
         }
 
         var spriteEntries: [String: SnorohFile.SpriteData] = [:]
         for status in Status.allCases {
-            guard let entry = mime.sprite(for: status) else {
+            guard let entry = ohh.sprite(for: status) else {
                 throw ExportError.spriteReadFailed(status: status.rawValue)
             }
             let path = manager.spritePath(fileName: entry.fileName)
@@ -74,7 +73,7 @@ enum MimeExporter {
             )
         }
 
-        let file = SnorohFile(version: 1, name: mime.name, sprites: spriteEntries)
+        let file = SnorohFile(version: 1, name: ohh.name, sprites: spriteEntries)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let jsonData = try encoder.encode(file)
@@ -92,9 +91,8 @@ enum MimeExporter {
         return f
     }()
 
-    /// Generate a default filename for export.
-    static func defaultFilename(for mime: CustomMimeData) -> String {
-        let safeName = mime.name.replacingOccurrences(
+    static func defaultFilename(for ohh: CustomOhhData) -> String {
+        let safeName = ohh.name.replacingOccurrences(
             of: "[^a-zA-Z0-9_-]",
             with: "-",
             options: .regularExpression
@@ -105,10 +103,8 @@ enum MimeExporter {
 
     // MARK: - Import
 
-    /// Import a custom mime from an .snoroh file.
-    /// Returns the new mime ID on success.
     @discardableResult
-    static func importMime(from source: URL) throws -> String {
+    static func importOhh(from source: URL) throws -> String {
         guard let fileData = try? Data(contentsOf: source) else {
             throw ImportError.readFailed
         }
@@ -132,14 +128,13 @@ enum MimeExporter {
             guard let decoded = Data(base64Encoded: entry.data) else {
                 throw ImportError.decodeFailed(status: status.rawValue)
             }
-            // Validate that the decoded data is a valid image
             guard SmartImport.loadImage(from: decoded) != nil else {
                 throw ImportError.decodeFailed(status: status.rawValue)
             }
             blobs[status] = (data: decoded, frames: entry.frames)
         }
 
-        guard let id = CustomMimeManager.shared.addMimeFromBlobs(
+        guard let id = CustomOhhManager.shared.addOhhFromBlobs(
             name: file.name,
             spriteBlobs: blobs
         ) else {

@@ -36,7 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.setActivationPolicy(.accessory)
         }
 
-        CustomMimeManager.shared.load()
+        CustomOhhManager.shared.load()
         loadSavedPreferences()
         runSetup()
         startHTTPServer()

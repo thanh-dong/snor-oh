@@ -210,14 +210,14 @@ struct ProjectInfo: Codable {
     }
 }
 
-// MARK: - Custom Mime
+// MARK: - Custom Ohh
 
-struct CustomMimeData: Codable, Identifiable {
+struct CustomOhhData: Codable, Identifiable {
     let id: String
     var name: String
     var sprites: [String: SpriteEntry]  // Status.rawValue → SpriteEntry
 
-    /// Present only for mimes created via Smart Import; enables re-editing.
+    /// Present only for ohhs created via Smart Import; enables re-editing.
     var smartImportMeta: SmartImportMeta?
 
     struct SpriteEntry: Codable {
