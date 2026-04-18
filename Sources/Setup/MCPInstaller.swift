@@ -219,11 +219,15 @@ enum MCPInstaller {
     }
 
     private static func findBundledServer() -> URL? {
-        // SPM bundles resources into the bundle
+        // Release .app bundle: Resources/Scripts/mcp-server/server.mjs
+        if let url = Bundle.main.url(forResource: "server", withExtension: "mjs", subdirectory: "Scripts/mcp-server") {
+            return url
+        }
+        // SPM debug build: may be at mcp-server/server.mjs
         if let url = Bundle.main.url(forResource: "server", withExtension: "mjs", subdirectory: "mcp-server") {
             return url
         }
-        // Fallback: search bundle root
+        // Fallback: bundle root
         if let url = Bundle.main.url(forResource: "server", withExtension: "mjs") {
             return url
         }
