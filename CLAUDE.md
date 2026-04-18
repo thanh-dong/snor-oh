@@ -7,8 +7,19 @@ Native macOS desktop mascot that reacts to terminal and Claude Code activity. sn
 - **Build**: `swift build`
 - **Run**: `swift run`
 - **Test**: `swift test`
+- **Release**: `bash Scripts/build-release.sh` (outputs `.build/release-app/snor-oh.app`)
 - **XcodeGen**: `xcodegen generate` (creates .xcodeproj)
 - **Min macOS**: 14.0 (Sonoma) — required for @Observable
+
+## Workflow
+
+After completing a task, always build a release package for testing:
+
+```bash
+bash Scripts/build-release.sh
+```
+
+This creates a signed `.app` bundle at `.build/release-app/snor-oh.app`. Run it with `open .build/release-app/snor-oh.app` to verify changes work end-to-end.
 
 ## Architecture
 
