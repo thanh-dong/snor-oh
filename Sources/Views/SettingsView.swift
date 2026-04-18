@@ -46,46 +46,6 @@ struct GeneralTab: View {
 
     var body: some View {
         Form {
-            Section("Claude Code Integration") {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 6) {
-                            Image(systemName: mcpInstalled ? "checkmark.circle.fill" : "xmark.circle")
-                                .foregroundStyle(mcpInstalled ? .green : .red)
-                                .font(.caption)
-                            Text("MCP Server")
-                                .font(.callout)
-                            Text(mcpInstalled ? "installed" : "not installed")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        HStack(spacing: 6) {
-                            Image(systemName: mcpRegistered ? "checkmark.circle.fill" : "xmark.circle")
-                                .foregroundStyle(mcpRegistered ? .green : .red)
-                                .font(.caption)
-                            Text("Claude Code")
-                                .font(.callout)
-                            Text(mcpRegistered ? "registered" : "not registered")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    Spacer()
-                    Button {
-                        installMCP()
-                    } label: {
-                        if mcpInstalling {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Text(mcpInstalled && mcpRegistered ? "Reinstall" : "Install")
-                        }
-                    }
-                    .disabled(mcpInstalling)
-                }
-                .help("Installs MCP server to ~/.snor-oh/mcp/ and registers in ~/.claude.json")
-            }
-
             Section("Appearance") {
                 Picker("Theme", selection: $theme) {
                     Text("Dark").tag("dark")
@@ -130,6 +90,47 @@ struct GeneralTab: View {
                 Toggle("Show in Menu Bar", isOn: $trayVisible)
                     .help("Shows the pawprint icon in the menu bar.")
             }
+
+            Section("Claude Code Integration") {
+                HStack(spacing: 6) {
+                    Image(systemName: mcpInstalled ? "checkmark.circle.fill" : "xmark.circle")
+                        .foregroundStyle(mcpInstalled ? .green : .red)
+                        .font(.caption)
+                    Text("MCP Server")
+                    Text(mcpInstalled ? "installed" : "not installed")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                HStack(spacing: 6) {
+                    Image(systemName: mcpRegistered ? "checkmark.circle.fill" : "xmark.circle")
+                        .foregroundStyle(mcpRegistered ? .green : .red)
+                        .font(.caption)
+                    Text("Registered in Claude Code")
+                    Text(mcpRegistered ? "yes" : "no")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                HStack {
+                    Button {
+                        installMCP()
+                    } label: {
+                        if mcpInstalling {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Text(mcpInstalled && mcpRegistered ? "Reinstall" : "Install")
+                        }
+                    }
+                    .disabled(mcpInstalling)
+
+                    if mcpInstalled || mcpRegistered {
+                        Button("Uninstall", role: .destructive) {
+                            uninstallMCP()
+                        }
+                        .disabled(mcpInstalling)
+                    }
+                }
+            }
         }
         .formStyle(.grouped)
         .padding()
@@ -159,6 +160,18 @@ struct GeneralTab: View {
             MCPInstaller.registerServer()
             MCPInstaller.installShellHooks()
             ClaudeHooks.migrate()
+            DispatchQueue.main.async {
+                mcpInstalling = false
+                refreshMCPStatus()
+            }
+        }
+    }
+
+    private func uninstallMCP() {
+        mcpInstalling = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            MCPInstaller.unregisterServer()
+            MCPInstaller.uninstallServer()
             DispatchQueue.main.async {
                 mcpInstalling = false
                 refreshMCPStatus()

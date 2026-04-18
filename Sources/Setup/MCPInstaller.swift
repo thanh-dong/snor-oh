@@ -146,6 +146,43 @@ enum MCPInstaller {
         }
     }
 
+    // MARK: - Uninstall
+
+    /// Remove the MCP server files from ~/.snor-oh/mcp/.
+    static func uninstallServer() {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let mcpDir = home.appendingPathComponent(".snor-oh/mcp")
+        let serverFile = mcpDir.appendingPathComponent("server.mjs")
+        if FileManager.default.fileExists(atPath: serverFile.path) {
+            try? FileManager.default.removeItem(at: serverFile)
+            print("[mcp] removed server from \(serverFile.path)")
+        }
+    }
+
+    /// Remove the snor-oh entry from ~/.claude.json mcpServers.
+    static func unregisterServer() {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let configURL = home.appendingPathComponent(".claude.json")
+
+        guard FileManager.default.fileExists(atPath: configURL.path),
+              let data = try? Data(contentsOf: configURL),
+              var config = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              var servers = config["mcpServers"] as? [String: Any],
+              servers["snor-oh"] != nil else {
+            return
+        }
+
+        servers.removeValue(forKey: "snor-oh")
+        config["mcpServers"] = servers
+
+        if let jsonData = try? JSONSerialization.data(
+            withJSONObject: config, options: [.prettyPrinted, .sortedKeys]
+        ) {
+            try? jsonData.write(to: configURL, options: .atomic)
+            print("[mcp] unregistered from \(configURL.path)")
+        }
+    }
+
     // MARK: - Status
 
     static var isServerInstalled: Bool {
