@@ -342,7 +342,7 @@ private struct MCPSectionView: View {
                     if !config.mcpServers.isEmpty {
                         Section("Global") {
                             ForEach(config.mcpServers) { server in
-                                mcpRow(server)
+                                mcpRow(server, project: nil)
                                     .contextMenu { mcpContextMenu(server, project: nil) }
                             }
                         }
@@ -351,7 +351,7 @@ private struct MCPSectionView: View {
                     ForEach(config.projectMCPServers) { group in
                         Section {
                             ForEach(group.servers) { server in
-                                mcpRow(server)
+                                mcpRow(server, project: group.projectPath)
                                     .contextMenu {
                                         mcpContextMenu(server, project: group.projectPath)
                                     }
@@ -411,7 +411,7 @@ private struct MCPSectionView: View {
         }
     }
 
-    private func mcpRow(_ server: ClaudeMCPServer) -> some View {
+    private func mcpRow(_ server: ClaudeMCPServer, project: String?) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
@@ -456,7 +456,7 @@ private struct MCPSectionView: View {
             Spacer()
             Button {
                 deleteTarget = server
-                deleteProjectPath = nil
+                deleteProjectPath = project
             } label: {
                 Image(systemName: "xmark.circle")
                     .font(.caption)
