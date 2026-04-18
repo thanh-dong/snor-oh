@@ -251,13 +251,17 @@ struct SnorOhPanelView: View {
 
     private var contentArea: some View {
         HStack(alignment: .center, spacing: 0) {
-            // Fixed square container — mascot always centered within it
+            // Fixed square container — mascot scaled to fit within it
             ZStack {
                 AnimatedSpriteView(engine: spriteEngine)
-                    .frame(width: mascotSize, height: mascotSize)
+                    .frame(
+                        width: min(mascotSize, mascotContainerSize),
+                        height: min(mascotSize, mascotContainerSize)
+                    )
                     .shadow(color: glowColor, radius: glowMode == "off" ? 0 : 8)
             }
             .frame(width: mascotContainerSize, height: mascotContainerSize)
+            .clipped()
             .padding(4)
 
             // Project list
