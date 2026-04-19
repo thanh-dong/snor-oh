@@ -394,9 +394,12 @@ enum SmartImport {
 
     // MARK: - Frame Input Parsing
 
-    /// Parse user input like "1-5" or "1,3,5-8" into 0-based indices.
+    /// Parse user input like "1-5" or "5,1,3" into 0-based indices.
+    /// Preserves the order the user wrote (so animation order follows the input),
+    /// with first-occurrence-wins dedup.
     static func parseFrameInput(_ input: String, maxFrames: Int) -> [Int] {
-        var indices: Set<Int> = []
+        var seen: Set<Int> = []
+        var result: [Int] = []
         let parts = input.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
 
         for part in parts {
@@ -407,15 +410,17 @@ enum SmartImport {
                     let end = min(maxFrames, range[1])
                     guard start <= end else { continue }
                     for i in start...end {
-                        indices.insert(i - 1)  // Convert to 0-based
+                        let idx = i - 1
+                        if seen.insert(idx).inserted { result.append(idx) }
                     }
                 }
             } else if let n = Int(part), n >= 1, n <= maxFrames {
-                indices.insert(n - 1)
+                let idx = n - 1
+                if seen.insert(idx).inserted { result.append(idx) }
             }
         }
 
-        return indices.sorted()
+        return result
     }
 
     // MARK: - Full Pipeline

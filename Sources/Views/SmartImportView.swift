@@ -16,6 +16,13 @@ struct SmartImportSheet: View {
     @State private var saving = false
     @State private var errorMessage: String?
     @State private var previewingStatus: Status?
+    @State private var draggedIndex: Int?
+    @State private var hoveredIndex: Int?
+    @State private var framesEdited = false
+    @State private var statusDragStatus: String?
+    @State private var statusDragPos: Int?
+    @State private var statusHoverStatus: String?
+    @State private var statusHoverPos: Int?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -114,26 +121,72 @@ struct SmartImportSheet: View {
 
     private var frameGridSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Detected Frames")
-                .font(.subheadline.weight(.medium))
+            HStack {
+                Text("Detected Frames")
+                    .font(.subheadline.weight(.medium))
+                Spacer()
+                Text("Drag to reorder · hover to delete")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
 
             LazyVGrid(columns: Array(repeating: GridItem(.fixed(52), spacing: 4), count: 8), spacing: 4) {
                 ForEach(0..<framePreviews.count, id: \.self) { i in
-                    VStack(spacing: 1) {
-                        Image(decorative: framePreviews[i], scale: 1)
-                            .interpolation(.none)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 44, height: 44)
-                            .background(Color.secondary.opacity(0.06))
-                            .cornerRadius(3)
-                        Text("\(i + 1)")
-                            .font(.system(size: 9, design: .monospaced))
-                            .foregroundStyle(.tertiary)
-                    }
+                    frameTile(i)
                 }
             }
         }
+    }
+
+    private func frameTile(_ i: Int) -> some View {
+        VStack(spacing: 1) {
+            ZStack(alignment: .topTrailing) {
+                Image(decorative: framePreviews[i], scale: 1)
+                    .interpolation(.none)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 44, height: 44)
+                    .background(Color.secondary.opacity(0.06))
+                    .cornerRadius(3)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 3)
+                            .stroke(draggedIndex == i ? Color.accentColor : Color.clear, lineWidth: 1.5)
+                    )
+                    .opacity(draggedIndex == i ? 0.4 : 1)
+
+                if hoveredIndex == i {
+                    Button {
+                        deleteFrame(at: i)
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 13))
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(.white, .red)
+                            .shadow(radius: 1)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Delete frame")
+                    .offset(x: 5, y: -5)
+                }
+            }
+            Text("\(i + 1)")
+                .font(.system(size: 9, design: .monospaced))
+                .foregroundStyle(.tertiary)
+        }
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            if hovering { hoveredIndex = i }
+            else if hoveredIndex == i { hoveredIndex = nil }
+        }
+        .onDrag {
+            draggedIndex = i
+            return NSItemProvider(object: "\(i)" as NSString)
+        }
+        .onDrop(of: [.text], delegate: FrameDropDelegate(
+            targetIndex: i,
+            draggedIndex: $draggedIndex,
+            onMove: { src, dst in moveFrame(from: src, to: dst) }
+        ))
     }
 
     // MARK: - Status Assignment
@@ -193,27 +246,80 @@ struct SmartImportSheet: View {
                 }
             }
 
-            // Thumbnail strip for assigned frames
+            // Thumbnail strip for assigned frames (drag-reorder + hover-delete)
             let indices = parsedIndices(for: status)
             if !indices.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 2) {
-                        ForEach(indices, id: \.self) { idx in
+                    HStack(spacing: 4) {
+                        ForEach(Array(indices.enumerated()), id: \.offset) { pos, idx in
                             if idx < framePreviews.count {
-                                Image(decorative: framePreviews[idx], scale: 1)
-                                    .interpolation(.none)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 28, height: 28)
-                                    .background(Color.secondary.opacity(0.04))
-                                    .cornerRadius(2)
+                                statusFrameTile(status, frameIndex: idx, at: pos)
                             }
                         }
                     }
                     .padding(.leading, 93)
+                    .padding(.vertical, 3)
                 }
             }
         }
+    }
+
+    private func statusFrameTile(_ status: Status, frameIndex idx: Int, at pos: Int) -> some View {
+        let key = status.rawValue
+        let isHovered = statusHoverStatus == key && statusHoverPos == pos
+        let isDragged = statusDragStatus == key && statusDragPos == pos
+
+        return ZStack(alignment: .topTrailing) {
+            Image(decorative: framePreviews[idx], scale: 1)
+                .interpolation(.none)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 28, height: 28)
+                .background(Color.secondary.opacity(0.04))
+                .cornerRadius(2)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 2)
+                        .stroke(isDragged ? Color.accentColor : Color.clear, lineWidth: 1)
+                )
+                .opacity(isDragged ? 0.4 : 1)
+
+            if isHovered {
+                Button {
+                    deleteFromStatus(status, at: pos)
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 10))
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(.white, .red)
+                        .shadow(radius: 1)
+                }
+                .buttonStyle(.borderless)
+                .help("Remove from \(status.rawValue)")
+                .offset(x: 4, y: -4)
+            }
+        }
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            if hovering {
+                statusHoverStatus = key
+                statusHoverPos = pos
+            } else if statusHoverStatus == key && statusHoverPos == pos {
+                statusHoverStatus = nil
+                statusHoverPos = nil
+            }
+        }
+        .onDrag {
+            statusDragStatus = key
+            statusDragPos = pos
+            return NSItemProvider(object: "\(pos)" as NSString)
+        }
+        .onDrop(of: [.text], delegate: StatusFrameDropDelegate(
+            statusKey: key,
+            targetPos: pos,
+            dragStatus: $statusDragStatus,
+            dragPos: $statusDragPos,
+            onMove: { src, dst in moveInStatus(status, from: src, to: dst) }
+        ))
     }
 
     // MARK: - Animation Preview Popover
@@ -247,6 +353,116 @@ struct SmartImportSheet: View {
         let text = frameInputs[status] ?? ""
         guard !text.isEmpty else { return [] }
         return SmartImport.parseFrameInput(text, maxFrames: detectedFrames.count)
+    }
+
+    // MARK: - Frame Mutation
+
+    private func deleteFrame(at pos: Int) {
+        guard pos >= 0, pos < detectedFrames.count else { return }
+        let n = detectedFrames.count
+        var oldToNew = [Int?](repeating: nil, count: n)
+        for i in 0..<n {
+            if i == pos { oldToNew[i] = nil }
+            else if i < pos { oldToNew[i] = i }
+            else { oldToNew[i] = i - 1 }
+        }
+        detectedFrames.remove(at: pos)
+        framePreviews.remove(at: pos)
+        if hoveredIndex == pos { hoveredIndex = nil }
+        framesEdited = true
+        applyRemap(oldToNew)
+    }
+
+    private func moveFrame(from src: Int, to dst: Int) {
+        guard src != dst else { return }
+        guard src >= 0, src < detectedFrames.count else { return }
+        guard dst >= 0, dst < detectedFrames.count else { return }
+
+        let n = detectedFrames.count
+        var order = Array(0..<n)
+        let moved = order.remove(at: src)
+        let insertAt = min(dst, order.count)
+        order.insert(moved, at: insertAt)
+
+        var oldToNew = [Int?](repeating: nil, count: n)
+        for (newPos, oldPos) in order.enumerated() {
+            oldToNew[oldPos] = newPos
+        }
+
+        let frame = detectedFrames.remove(at: src)
+        let preview = framePreviews.remove(at: src)
+        detectedFrames.insert(frame, at: insertAt)
+        framePreviews.insert(preview, at: insertAt)
+
+        framesEdited = true
+        applyRemap(oldToNew)
+    }
+
+    // MARK: - Per-Status Mutation
+
+    private func deleteFromStatus(_ status: Status, at pos: Int) {
+        var indices = parsedIndices(for: status)
+        guard pos >= 0, pos < indices.count else { return }
+        indices.remove(at: pos)
+        frameInputs[status] = reserializeIndices(indices)
+        if statusHoverStatus == status.rawValue && statusHoverPos == pos {
+            statusHoverStatus = nil
+            statusHoverPos = nil
+        }
+    }
+
+    private func moveInStatus(_ status: Status, from src: Int, to dst: Int) {
+        guard src != dst else { return }
+        var indices = parsedIndices(for: status)
+        guard src >= 0, src < indices.count, dst >= 0, dst < indices.count else { return }
+        let moved = indices.remove(at: src)
+        let insertAt = min(dst, indices.count)
+        indices.insert(moved, at: insertAt)
+        frameInputs[status] = reserializeIndices(indices)
+    }
+
+    /// Rewrite each status's text input after a delete/reorder so the same
+    /// original frames remain assigned, with dropped frames removed.
+    private func applyRemap(_ oldToNew: [Int?]) {
+        var newInputs: [Status: String] = [:]
+        for status in Status.allCases {
+            let oldIdx = parsedIndicesRaw(for: status, maxFrames: oldToNew.count)
+            let newIdx = oldIdx.compactMap { i -> Int? in
+                guard i < oldToNew.count else { return nil }
+                return oldToNew[i]
+            }
+            newInputs[status] = reserializeIndices(newIdx)
+        }
+        frameInputs = newInputs
+    }
+
+    /// Like parsedIndices but clamps against an explicit maxFrames (pre-mutation count).
+    private func parsedIndicesRaw(for status: Status, maxFrames: Int) -> [Int] {
+        let text = frameInputs[status] ?? ""
+        guard !text.isEmpty, maxFrames > 0 else { return [] }
+        return SmartImport.parseFrameInput(text, maxFrames: maxFrames)
+    }
+
+    /// Serialize 0-based indices into a 1-based range string like "1-3,5".
+    /// Preserves the input order: "3,4,5,1,2" → "3-5,1-2" (runs only compacted
+    /// when consecutive indices appear in ascending order).
+    private func reserializeIndices(_ indices: [Int]) -> String {
+        guard !indices.isEmpty else { return "" }
+        var parts: [String] = []
+        var start = indices[0]
+        var prev = indices[0]
+        for k in 1..<indices.count {
+            let curr = indices[k]
+            if curr == prev + 1 {
+                prev = curr
+            } else {
+                parts.append(start == prev ? "\(start + 1)" : "\(start + 1)-\(prev + 1)")
+                start = curr
+                prev = curr
+            }
+        }
+        parts.append(start == prev ? "\(start + 1)" : "\(start + 1)-\(prev + 1)")
+        return parts.joined(separator: ",")
     }
 
     // MARK: - Pick Sprite Sheet
@@ -317,6 +533,9 @@ struct SmartImportSheet: View {
                 detectedFrames = result.frames
                 framePreviews = previews
                 frameInputs = inputs
+                framesEdited = false
+                draggedIndex = nil
+                hoveredIndex = nil
                 if ohhName.isEmpty { ohhName = defaultName }
                 processing = false
             }
@@ -369,7 +588,7 @@ struct SmartImportSheet: View {
             }
 
             var smartMeta: (sheetData: Data, frameInputs: [Status: String])?
-            if let sourceImage, let pngData = SmartImport.pngData(from: sourceImage) {
+            if !framesEdited, let sourceImage, let pngData = SmartImport.pngData(from: sourceImage) {
                 smartMeta = (sheetData: pngData, frameInputs: frameInputs)
             }
 
@@ -384,6 +603,52 @@ struct SmartImportSheet: View {
                 else { errorMessage = "Failed to save" }
             }
         }
+    }
+}
+
+// MARK: - Drop Delegate
+
+private struct FrameDropDelegate: DropDelegate {
+    let targetIndex: Int
+    @Binding var draggedIndex: Int?
+    let onMove: (Int, Int) -> Void
+
+    func performDrop(info: DropInfo) -> Bool {
+        guard let src = draggedIndex else { return false }
+        draggedIndex = nil
+        if src != targetIndex {
+            onMove(src, targetIndex)
+        }
+        return true
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+}
+
+private struct StatusFrameDropDelegate: DropDelegate {
+    let statusKey: String
+    let targetPos: Int
+    @Binding var dragStatus: String?
+    @Binding var dragPos: Int?
+    let onMove: (Int, Int) -> Void
+
+    func performDrop(info: DropInfo) -> Bool {
+        let src = dragPos
+        let from = dragStatus
+        dragStatus = nil
+        dragPos = nil
+        guard from == statusKey, let s = src, s != targetPos else { return false }
+        onMove(s, targetPos)
+        return true
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        if dragStatus == statusKey {
+            return DropProposal(operation: .move)
+        }
+        return DropProposal(operation: .forbidden)
     }
 }
 
