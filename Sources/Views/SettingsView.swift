@@ -35,22 +35,50 @@ struct SettingsView: View {
 struct BucketTab: View {
     let manager: BucketManager
 
-    @State private var captureClipboard: Bool = true
-    @State private var maxItems: Double = 200
-    @State private var maxStorageMB: Double = 100
     @State private var newIgnoreEntry: String = ""
+
+    /// All sliders/toggles bind directly to `manager.settings` via these
+    /// computed bindings so the UI stays in sync with any external mutation
+    /// (e.g. programmatic `updateSettings`, cross-window changes, disk reload).
+    private var captureClipboardBinding: Binding<Bool> {
+        Binding(
+            get: { manager.settings.captureClipboard },
+            set: { new in
+                var s = manager.settings
+                s.captureClipboard = new
+                manager.updateSettings(s)
+            }
+        )
+    }
+
+    private var maxItemsBinding: Binding<Double> {
+        Binding(
+            get: { Double(manager.settings.maxItems) },
+            set: { new in
+                var s = manager.settings
+                s.maxItems = Int(new)
+                manager.updateSettings(s)
+            }
+        )
+    }
+
+    private var maxStorageMBBinding: Binding<Double> {
+        Binding(
+            get: { Double(manager.settings.maxStorageBytes / 1_000_000) },
+            set: { new in
+                var s = manager.settings
+                s.maxStorageBytes = Int64(new) * 1_000_000
+                manager.updateSettings(s)
+            }
+        )
+    }
 
     var body: some View {
         Form {
             Section("Clipboard Capture") {
-                Toggle("Automatically capture clipboard", isOn: $captureClipboard)
-                    .onChange(of: captureClipboard) { _, new in
-                        var s = manager.settings
-                        s.captureClipboard = new
-                        manager.updateSettings(s)
-                    }
+                Toggle("Automatically capture clipboard", isOn: captureClipboardBinding)
 
-                if captureClipboard {
+                if manager.settings.captureClipboard {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Ignored apps (bundle IDs)")
                             .font(.system(size: 11))
@@ -94,26 +122,16 @@ struct BucketTab: View {
             Section("Capacity") {
                 HStack {
                     Text("Max items")
-                    Slider(value: $maxItems, in: 50...1000, step: 50)
-                        .onChange(of: maxItems) { _, new in
-                            var s = manager.settings
-                            s.maxItems = Int(new)
-                            manager.updateSettings(s)
-                        }
-                    Text("\(Int(maxItems))")
+                    Slider(value: maxItemsBinding, in: 50...1000, step: 50)
+                    Text("\(manager.settings.maxItems)")
                         .monospacedDigit()
                         .frame(width: 44, alignment: .trailing)
                 }
 
                 HStack {
                     Text("Max storage")
-                    Slider(value: $maxStorageMB, in: 10...1000, step: 10)
-                        .onChange(of: maxStorageMB) { _, new in
-                            var s = manager.settings
-                            s.maxStorageBytes = Int64(new) * 1_000_000
-                            manager.updateSettings(s)
-                        }
-                    Text("\(Int(maxStorageMB)) MB")
+                    Slider(value: maxStorageMBBinding, in: 10...1000, step: 10)
+                    Text("\(manager.settings.maxStorageBytes / 1_000_000) MB")
                         .monospacedDigit()
                         .frame(width: 60, alignment: .trailing)
                 }
@@ -126,11 +144,6 @@ struct BucketTab: View {
             }
         }
         .formStyle(.grouped)
-        .onAppear {
-            captureClipboard = manager.settings.captureClipboard
-            maxItems = Double(manager.settings.maxItems)
-            maxStorageMB = Double(manager.settings.maxStorageBytes / 1_000_000)
-        }
     }
 }
 

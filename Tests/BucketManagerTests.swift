@@ -220,4 +220,51 @@ final class BucketManagerTests: XCTestCase {
         XCTAssertEqual(fresh.activeBucket.items.count, 1)
         XCTAssertEqual(fresh.activeBucket.items.first?.text, "persistent")
     }
+
+    // MARK: - Async file + image add (BLOCKER-3 fix)
+
+    func testAddFileAtURLCopiesSidecar() async throws {
+        let src = tempRoot.appendingPathComponent("source.txt")
+        try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
+        try "hello".data(using: .utf8)!.write(to: src)
+
+        await manager.add(fileAt: src, source: .panel)
+
+        XCTAssertEqual(manager.activeBucket.items.count, 1)
+        let item = manager.activeBucket.items[0]
+        XCTAssertEqual(item.kind, .file)
+        XCTAssertEqual(item.fileRef?.originalPath, src.path)
+        let cached = try XCTUnwrap(item.fileRef?.cachedPath)
+        XCTAssertTrue(cached.hasPrefix("files/"))
+        let absolute = tempRoot.appendingPathComponent(cached)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: absolute.path))
+        XCTAssertEqual(try Data(contentsOf: absolute), "hello".data(using: .utf8))
+    }
+
+    func testAddImageDataWritesSidecar() async throws {
+        await manager.add(imageData: Data([0x89, 0x50, 0x4E, 0x47]), source: .panel)
+
+        XCTAssertEqual(manager.activeBucket.items.count, 1)
+        let item = manager.activeBucket.items[0]
+        XCTAssertEqual(item.kind, .image)
+        let cached = try XCTUnwrap(item.fileRef?.cachedPath)
+        XCTAssertTrue(cached.hasPrefix("images/"))
+        let absolute = tempRoot.appendingPathComponent(cached)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: absolute.path))
+    }
+
+    // MARK: - flushPendingWrites (SHOULD-2 fix)
+
+    func testFlushPendingWritesPersistsImmediately() async throws {
+        manager.add(BucketItem(kind: .text, text: "not-yet-written"), source: .panel)
+        // No flush yet — a fresh manager wouldn't see this because the 500ms
+        // debounce hasn't fired.
+
+        await manager.flushPendingWrites()
+
+        let store = BucketStore(rootURL: tempRoot)
+        let loaded = try await store.loadBucket()
+        XCTAssertEqual(loaded.items.count, 1)
+        XCTAssertEqual(loaded.items[0].text, "not-yet-written")
+    }
 }

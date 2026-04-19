@@ -23,7 +23,8 @@ enum BucketDropHandler {
 
     /// Entry point called from `.onDrop(of:supportedUTTypes)` closures.
     /// Returns `true` synchronously so SwiftUI accepts the drop; real work
-    /// happens asynchronously as providers resolve.
+    /// happens asynchronously as providers resolve (and, for files/images,
+    /// as sidecar copies complete).
     @discardableResult
     static func ingest(providers: [NSItemProvider], source: BucketChangeSource) -> Bool {
         guard !providers.isEmpty else { return false }
@@ -31,124 +32,74 @@ enum BucketDropHandler {
 
         for provider in providers {
             Task { @MainActor in
-                if let item = await resolveItem(from: provider, stackGroupID: groupID) {
-                    BucketManager.shared.add(item, source: source)
-                }
+                await resolveAndInsert(from: provider, source: source, stackGroupID: groupID)
             }
         }
         return true
     }
 
-    // MARK: - Provider → Item
+    // MARK: - Provider resolution + insertion
 
-    private static func resolveItem(
+    private static func resolveAndInsert(
         from provider: NSItemProvider,
+        source: BucketChangeSource,
         stackGroupID: UUID?
-    ) async -> BucketItem? {
-        // 1. File URL (files + folders)
+    ) async {
+        let manager = BucketManager.shared
+
+        // 1. File URL (files + folders) — routes through `add(fileAt:)` which
+        //    copies the sidecar before insert.
         if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
             if let url = await loadFileURL(from: provider) {
-                return makeFileItem(at: url, stackGroupID: stackGroupID)
+                await manager.add(fileAt: url, source: source, stackGroupID: stackGroupID)
+                return
             }
         }
 
-        // 2. Image bytes
+        // 2. Image bytes — writes sidecar PNG, then inserts.
         if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
             if let data = await loadData(from: provider, type: UTType.image.identifier) {
-                return makeImageItem(data: data, stackGroupID: stackGroupID)
+                await manager.add(imageData: data, source: source, stackGroupID: stackGroupID)
+                return
             }
         }
 
-        // 3. Web URL (not file URL)
+        // 3. Web URL (not file URL) — no sidecar needed.
         if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
             if let url = await loadURL(from: provider), !url.isFileURL {
-                return makeURLItem(urlString: url.absoluteString, stackGroupID: stackGroupID)
+                let item = BucketItem(
+                    kind: .url,
+                    stackGroupID: stackGroupID,
+                    urlMeta: .init(urlString: url.absoluteString, title: nil)
+                )
+                manager.add(item, source: source)
+                return
             }
         }
 
-        // 4. Rich text (RTF)
+        // 4. Rich text (RTF) — stored inline (base64 in `text`).
         if provider.hasItemConformingToTypeIdentifier(UTType.rtf.identifier) {
             if let data = await loadData(from: provider, type: UTType.rtf.identifier) {
-                return makeRichTextItem(rtfData: data, stackGroupID: stackGroupID)
+                let item = BucketItem(
+                    kind: .richText,
+                    stackGroupID: stackGroupID,
+                    text: data.base64EncodedString()
+                )
+                manager.add(item, source: source)
+                return
             }
         }
 
-        // 5. Plain text
+        // 5. Plain text — stored inline.
         for id in [UTType.utf8PlainText.identifier, UTType.plainText.identifier] {
             if provider.hasItemConformingToTypeIdentifier(id) {
                 if let s = await loadString(from: provider, type: id) {
-                    return BucketItem(kind: .text, stackGroupID: stackGroupID, text: s)
+                    let item = BucketItem(kind: .text, stackGroupID: stackGroupID, text: s)
+                    manager.add(item, source: source)
+                    return
                 }
             }
         }
-
-        return nil
-    }
-
-    // MARK: - Factories
-
-    /// Creates a file/folder item, kicking off an async copy into the bucket
-    /// sidecar. The returned item has `cachedPath = nil` until the copy finishes;
-    /// BucketManager will see the initial item and update it after copy.
-    private static func makeFileItem(at url: URL, stackGroupID: UUID?) -> BucketItem {
-        var isDir: ObjCBool = false
-        FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir)
-        let kind: BucketItemKind = isDir.boolValue ? .folder : inferFileKind(url: url)
-        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
-        let uti = (try? url.resourceValues(forKeys: [.typeIdentifierKey]).typeIdentifier)
-            ?? (isDir.boolValue ? "public.folder" : "public.data")
-        return BucketItem(
-            id: UUID(),
-            kind: kind,
-            stackGroupID: stackGroupID,
-            fileRef: .init(
-                originalPath: url.path,
-                cachedPath: nil,
-                byteSize: size,
-                uti: uti,
-                displayName: url.lastPathComponent
-            )
-        )
-    }
-
-    private static func inferFileKind(url: URL) -> BucketItemKind {
-        if let uti = try? url.resourceValues(forKeys: [.typeIdentifierKey]).typeIdentifier,
-           let t = UTType(uti) {
-            if t.conforms(to: .image) { return .image }
-        }
-        return .file
-    }
-
-    private static func makeImageItem(data: Data, stackGroupID: UUID?) -> BucketItem {
-        let id = UUID()
-        return BucketItem(
-            id: id,
-            kind: .image,
-            stackGroupID: stackGroupID,
-            fileRef: .init(
-                originalPath: "", // no original path for pasteboard-supplied bytes
-                cachedPath: nil,
-                byteSize: Int64(data.count),
-                uti: UTType.image.identifier,
-                displayName: "image-\(id.uuidString.prefix(8)).png"
-            )
-        )
-    }
-
-    private static func makeURLItem(urlString: String, stackGroupID: UUID?) -> BucketItem {
-        BucketItem(
-            kind: .url,
-            stackGroupID: stackGroupID,
-            urlMeta: .init(urlString: urlString, title: nil)
-        )
-    }
-
-    private static func makeRichTextItem(rtfData: Data, stackGroupID: UUID?) -> BucketItem {
-        BucketItem(
-            kind: .richText,
-            stackGroupID: stackGroupID,
-            text: rtfData.base64EncodedString()
-        )
     }
 
     // MARK: - Async NSItemProvider loaders

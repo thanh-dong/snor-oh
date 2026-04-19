@@ -22,6 +22,11 @@ final class ClipboardMonitor {
     private var lastChangeCount: Int = -1
     private let pasteboard: NSPasteboard = .general
 
+    /// Set this to `true` immediately before the app writes to the pasteboard
+    /// (e.g. "Copy as Plain Text" from a bucket card context menu). The next
+    /// tick will swallow the change, preventing a self-capture feedback loop.
+    var suppressNextCapture: Bool = false
+
     private init() {}
 
     // MARK: - Lifecycle
@@ -54,6 +59,13 @@ final class ClipboardMonitor {
         let current = pasteboard.changeCount
         guard current != lastChangeCount else { return }
         lastChangeCount = current
+
+        // Swallow writes we made ourselves (e.g. "Copy as Plain Text" in the
+        // bucket card context menu) — prevents a duplicate-capture loop.
+        if suppressNextCapture {
+            suppressNextCapture = false
+            return
+        }
 
         // Ignore list via frontmost app bundle ID.
         let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier

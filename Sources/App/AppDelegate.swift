@@ -88,6 +88,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let obs = statusBarObserver { NotificationCenter.default.removeObserver(obs) }
         ClipboardMonitor.shared.stop()
         HotkeyRegistrar.shared.unregister()
+
+        // Flush any pending debounced bucket write synchronously (bounded wait)
+        // so a quit mid-debounce doesn't lose the latest mutation.
+        let sema = DispatchSemaphore(value: 0)
+        Task { @MainActor in
+            await BucketManager.shared.flushPendingWrites()
+            sema.signal()
+        }
+        _ = sema.wait(timeout: .now() + .milliseconds(500))
+
         peerDiscovery?.stop()
         watchdog?.stop()
         httpServer?.stop()

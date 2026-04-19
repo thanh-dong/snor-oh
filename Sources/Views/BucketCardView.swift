@@ -89,6 +89,39 @@ struct BucketCardView: View {
             itemProviderForDrag()
         }
         .contextMenu { contextMenu }
+        .focusable()
+        .onKeyPress(.space) {
+            if let url = quickLookURL() {
+                QuickLookPreviewer.shared.show(url: url)
+                return .handled
+            }
+            return .ignored
+        }
+    }
+
+    /// URL a Quick Look panel can display for this item. Only files and cached
+    /// images qualify — text / URL / color items return nil (spacebar becomes
+    /// a no-op).
+    private func quickLookURL() -> URL? {
+        switch item.kind {
+        case .file, .folder:
+            if let path = item.fileRef?.originalPath,
+               !path.isEmpty,
+               FileManager.default.fileExists(atPath: path) {
+                return URL(fileURLWithPath: path)
+            }
+            if let rel = item.fileRef?.cachedPath {
+                return storeRootURL.appendingPathComponent(rel)
+            }
+            return nil
+        case .image:
+            if let rel = item.fileRef?.cachedPath {
+                return storeRootURL.appendingPathComponent(rel)
+            }
+            return nil
+        case .url, .text, .richText, .color:
+            return nil
+        }
     }
 
     // MARK: - Context menu
@@ -100,6 +133,7 @@ struct BucketCardView: View {
         }
         if let plain = plainTextPayload {
             Button("Copy as Plain Text") {
+                ClipboardMonitor.shared.suppressNextCapture = true
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(plain, forType: .string)
             }

@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import UniformTypeIdentifiers
 
 /// Core state holder for the Bucket feature.
 ///
@@ -86,32 +87,106 @@ final class BucketManager {
         schedulePersist()
     }
 
+    /// Async entry point for file drops. Copies the source into the sidecar
+    /// directory **before** inserting, so the item's `cachedPath` is populated
+    /// and the bucket survives restart.
+    func add(fileAt url: URL, source: BucketChangeSource, stackGroupID: UUID? = nil) async {
+        var isDir: ObjCBool = false
+        FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir)
+        let kind = classifyFile(url: url, isDirectory: isDir.boolValue)
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
+        let uti = (try? url.resourceValues(forKeys: [.typeIdentifierKey]).typeIdentifier)
+            ?? (isDir.boolValue ? "public.folder" : "public.data")
+
+        let itemID = UUID()
+        var cachedPath: String? = nil
+        if !isDir.boolValue {
+            let subdir = kind == .image ? "images" : "files"
+            cachedPath = try? await store.copySidecar(
+                from: url,
+                itemID: itemID,
+                subdir: subdir
+            )
+        }
+
+        let item = BucketItem(
+            id: itemID,
+            kind: kind,
+            stackGroupID: stackGroupID,
+            fileRef: .init(
+                originalPath: url.path,
+                cachedPath: cachedPath,
+                byteSize: size,
+                uti: uti,
+                displayName: url.lastPathComponent
+            )
+        )
+        add(item, source: source)
+    }
+
+    /// Async entry point for raw image bytes (pasteboard image drops).
+    /// Writes the PNG bytes into the sidecar and inserts with `cachedPath` set.
+    func add(imageData data: Data, source: BucketChangeSource, stackGroupID: UUID? = nil) async {
+        let itemID = UUID()
+        let cachedPath = try? await store.writeSidecar(
+            data,
+            itemID: itemID,
+            subdir: "images",
+            ext: "png"
+        )
+        let item = BucketItem(
+            id: itemID,
+            kind: .image,
+            stackGroupID: stackGroupID,
+            fileRef: .init(
+                originalPath: "",
+                cachedPath: cachedPath,
+                byteSize: Int64(data.count),
+                uti: "public.png",
+                displayName: "image-\(itemID.uuidString.prefix(8)).png"
+            )
+        )
+        add(item, source: source)
+    }
+
+    private func classifyFile(url: URL, isDirectory: Bool) -> BucketItemKind {
+        if isDirectory { return .folder }
+        if let uti = (try? url.resourceValues(forKeys: [.typeIdentifierKey]).typeIdentifier),
+           let t = UTType(uti), t.conforms(to: .image) {
+            return .image
+        }
+        return .file
+    }
+
     /// Removes by ID; deletes any sidecar files.
-    func remove(id: UUID) {
+    /// `source` defaults to `.panel` since most callers are UI-driven, but can
+    /// be overridden (e.g. from peer-sync or watched-folder cleanup in later
+    /// epics) so Epic 02's catch reaction picks the right intensity.
+    func remove(id: UUID, source: BucketChangeSource = .panel) {
         guard let idx = activeBucket.items.firstIndex(where: { $0.id == id }) else { return }
         let removed = activeBucket.items.remove(at: idx)
         cleanupSidecars(for: [removed])
-        postChanged(change: .removed, source: .panel, itemID: id)
+        postChanged(change: .removed, source: source, itemID: id)
         schedulePersist()
     }
 
     /// Toggles `pinned`; pinned items are never auto-evicted and never
     /// removed by `clearUnpinned()`.
-    func togglePin(id: UUID) {
+    func togglePin(id: UUID, source: BucketChangeSource = .panel) {
         guard let idx = activeBucket.items.firstIndex(where: { $0.id == id }) else { return }
         activeBucket.items[idx].pinned.toggle()
         let kind: BucketChangeKind = activeBucket.items[idx].pinned ? .pinned : .unpinned
-        postChanged(change: kind, source: .panel, itemID: id)
+        postChanged(change: kind, source: source, itemID: id)
         schedulePersist()
     }
 
     /// Removes all unpinned items and their sidecars.
-    func clearUnpinned() {
+    func clearUnpinned(source: BucketChangeSource = .panel) {
         let removed = activeBucket.items.filter { !$0.pinned }
         guard !removed.isEmpty else { return }
         activeBucket.items.removeAll { !$0.pinned }
         cleanupSidecars(for: removed)
-        postChanged(change: .cleared, source: .panel, itemID: nil)
+        postChanged(change: .cleared, source: source, itemID: nil)
         schedulePersist()
     }
 
@@ -209,24 +284,15 @@ final class BucketManager {
     }
 
     private func cleanupSidecars(for items: [BucketItem]) {
-        let paths = items.compactMap { item -> String? in
-            [
-                item.fileRef?.cachedPath,
-                item.urlMeta?.faviconPath,
-                item.urlMeta?.ogImagePath,
-            ].compactMap { $0 }.joined(separator: "\n").isEmpty ? nil : nil
-        }
-        // The reduce above is noise; gather flat list explicitly:
-        var flat: [String] = []
+        var paths: [String] = []
         for item in items {
-            if let p = item.fileRef?.cachedPath { flat.append(p) }
-            if let p = item.urlMeta?.faviconPath { flat.append(p) }
-            if let p = item.urlMeta?.ogImagePath { flat.append(p) }
+            if let p = item.fileRef?.cachedPath { paths.append(p) }
+            if let p = item.urlMeta?.faviconPath { paths.append(p) }
+            if let p = item.urlMeta?.ogImagePath { paths.append(p) }
         }
-        _ = paths // silence unused warning; kept for future "returning removed paths" hook
-        guard !flat.isEmpty else { return }
+        guard !paths.isEmpty else { return }
         Task { [store] in
-            await store.deleteSidecars(relativePaths: flat)
+            await store.deleteSidecars(relativePaths: paths)
         }
     }
 
@@ -266,11 +332,18 @@ final class BucketManager {
         }
     }
 
-    /// Tests use this to deterministically flush pending debounced writes.
-    func flushForTests() async {
+    /// Cancels any pending debounced write and flushes current state to disk.
+    /// Called from `applicationWillTerminate` to avoid losing a mutation that
+    /// arrived within the 500 ms debounce window.
+    func flushPendingWrites() async {
         persistDebounce?.cancel()
         let snapshot = activeBucket
         try? await store.saveBucket(snapshot)
         try? await store.saveSettings(settings)
+    }
+
+    /// Test alias for `flushPendingWrites()`. Kept so existing tests compile.
+    func flushForTests() async {
+        await flushPendingWrites()
     }
 }
