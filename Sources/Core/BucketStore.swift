@@ -17,7 +17,8 @@ import Foundation
 /// never blocks the UI thread.
 actor BucketStore {
 
-    let rootURL: URL
+    /// Sendable `let` — safe to read synchronously from any context.
+    nonisolated let rootURL: URL
 
     /// Default production root: `~/.snor-oh/buckets/`.
     /// Tests should inject a temp directory.

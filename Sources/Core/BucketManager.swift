@@ -34,12 +34,17 @@ final class BucketManager {
     private var loaded = false
     private var persistDebounce: Task<Void, Never>?
 
+    /// The root of on-disk bucket storage — exposed so views can resolve
+    /// sidecar thumbnails without awaiting the store actor. Captured at init.
+    nonisolated let storeRootURL: URL
+
     // MARK: - Init
 
     /// Designated init. Production uses `.shared`; tests construct their own
     /// with an isolated temp-dir `BucketStore`.
     init(store: BucketStore = BucketStore()) {
         self.store = store
+        self.storeRootURL = store.rootURL
     }
 
     // MARK: - Lifecycle

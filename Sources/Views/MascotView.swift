@@ -34,6 +34,9 @@ struct MascotView: View {
             AnimatedSpriteView(engine: spriteEngine)
                 .frame(width: spriteSize, height: spriteSize)
                 .shadow(color: glowColor, radius: glowMode == "off" ? 0 : 12)
+                .onDrop(of: BucketDropHandler.supportedUTTypes, isTargeted: nil) { providers in
+                    BucketDropHandler.ingest(providers: providers, source: .mascot)
+                }
 
             // Status pill
             StatusPill(status: sessionManager.currentUI)
