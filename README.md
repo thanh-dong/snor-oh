@@ -14,7 +14,13 @@ Your mascot floats on screen — running commands makes it busy, finishing tasks
 
 ### From Release
 
-Download `snor-oh-0.1.0.dmg` from [Releases](https://github.com/thanh-dong/snor-oh/releases), drag to Applications, launch. The setup wizard configures everything on first run.
+Download the latest DMG from [Releases](https://github.com/thanh-dong/snor-oh/releases), drag to Applications. On first launch, if macOS blocks the app (ad-hoc signed):
+
+```bash
+xattr -cr /Applications/snor-oh.app
+```
+
+Then open normally. The setup wizard configures everything on first run.
 
 ### From Source
 
