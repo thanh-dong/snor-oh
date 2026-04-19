@@ -240,6 +240,7 @@ struct OhhTab: View {
     @State private var showSmartImport = false
 
     private static let snorohType = UTType(filenameExtension: "snoroh") ?? .data
+    private static let animimeType = UTType(filenameExtension: "animime") ?? .data
 
     var body: some View {
         Form {
@@ -305,9 +306,10 @@ struct OhhTab: View {
                         showSmartImport = true
                     }
 
-                    Button("Import .snoroh") {
+                    Button("Import Package") {
                         importSnorohFile()
                     }
+                    .help("Import .snoroh or .animime package")
 
                     Spacer()
 
@@ -336,7 +338,7 @@ struct OhhTab: View {
 
     private func importSnorohFile() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [Self.snorohType]
+        panel.allowedContentTypes = [Self.snorohType, Self.animimeType]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
 
