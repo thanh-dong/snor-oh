@@ -2,10 +2,13 @@ import Foundation
 import Network
 
 /// Discovers peers on the local network via Bonjour (DNS-SD).
-/// Advertises this instance and browses for other snor-oh instances.
 ///
-/// Service type: `_snor-oh._tcp`
-/// TXT records: `nickname`, `pet`, `port`, `ip`
+/// Peers are added immediately on discovery (even before TXT records arrive).
+/// TXT records (nickname, pet, port, ip) are extracted when available and
+/// the peer is updated via a `.changed` event.
+///
+/// The advertised `ip` TXT field contains this machine's local IPv4 address
+/// so peers can send messages directly without hostname resolution.
 final class PeerDiscovery {
     private let sessionManager: SessionManager
     private var listener: NWListener?
@@ -40,7 +43,6 @@ final class PeerDiscovery {
 
     // MARK: - Local IP
 
-    /// Get the local WiFi/Ethernet IPv4 address (not VPN, not loopback).
     private static func localIPAddress() -> String? {
         var ifaddr: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&ifaddr) == 0, let first = ifaddr else { return nil }
@@ -57,14 +59,12 @@ final class PeerDiscovery {
                            &addr, socklen_t(addr.count), nil, 0, NI_NUMERICHOST) == 0 {
                 let ip = String(cString: addr)
                 let name = String(cString: ptr.pointee.ifa_name)
-                // Skip utun/llw/awdl (VPN/Apple Wireless Direct Link)
                 if !name.hasPrefix("utun") && !name.hasPrefix("llw") && !name.hasPrefix("awdl") {
                     candidates.append((name: name, ip: ip))
                 }
             }
         }
 
-        // Prefer en0 (WiFi) or en1 (Ethernet), then any other
         if let en0 = candidates.first(where: { $0.name == "en0" }) { return en0.ip }
         if let en1 = candidates.first(where: { $0.name == "en1" }) { return en1.ip }
         return candidates.first?.ip
@@ -107,10 +107,7 @@ final class PeerDiscovery {
             }
         }
 
-        listener?.newConnectionHandler = { connection in
-            connection.cancel()
-        }
-
+        listener?.newConnectionHandler = { $0.cancel() }
         listener?.start(queue: queue)
     }
 
@@ -120,8 +117,8 @@ final class PeerDiscovery {
         let descriptor = NWBrowser.Descriptor.bonjour(type: "_snor-oh._tcp", domain: nil)
         browser = NWBrowser(for: descriptor, using: .tcp)
 
-        browser?.browseResultsChangedHandler = { [weak self] results, changes in
-            self?.handleBrowseChanges(results: results, changes: changes)
+        browser?.browseResultsChangedHandler = { [weak self] _, changes in
+            self?.handleBrowseChanges(changes: changes)
         }
 
         browser?.stateUpdateHandler = { state in
@@ -131,7 +128,7 @@ final class PeerDiscovery {
             case .failed(let error):
                 print("[discovery] browser failed: \(error)")
             case .waiting(let error):
-                print("[discovery] browser waiting: \(error) — check System Settings > Privacy > Local Network")
+                print("[discovery] browser waiting: \(error)")
             default:
                 break
             }
@@ -140,16 +137,13 @@ final class PeerDiscovery {
         browser?.start(queue: queue)
     }
 
-    private func handleBrowseChanges(results: Set<NWBrowser.Result>, changes: Set<NWBrowser.Result.Change>) {
+    private func handleBrowseChanges(changes: Set<NWBrowser.Result.Change>) {
         for change in changes {
             switch change {
-            case .added(let result):
+            case .added(let result), .changed(old: _, new: let result, flags: _):
                 handlePeerFound(result)
             case .removed(let result):
                 handlePeerRemoved(result)
-            case .changed(old: _, new: let result, flags: _):
-                // TXT records often arrive in a .changed event after the initial .added
-                handlePeerFound(result)
             case .identical:
                 break
             @unknown default:
@@ -160,41 +154,39 @@ final class PeerDiscovery {
 
     private func handlePeerFound(_ result: NWBrowser.Result) {
         guard case .service(let name, _, _, _) = result.endpoint else { return }
-
-        // Skip self
         if name == instanceName || name.hasSuffix(pidSuffix) { return }
 
-        // Extract TXT record — skip if no metadata yet (wait for .changed event)
-        guard case .bonjour(let txtRecord) = result.metadata else {
-            print("[discovery] waiting for TXT from \(name)...")
-            return
-        }
+        // Extract TXT if available
+        var nickname = name
+        var pet = "sprite"
+        var httpPort: UInt16 = 1234
+        var ip: String?
 
-        var txtDict: [String: String] = [:]
-        for entry in txtRecord {
-            if let val = txtRecord[entry.key] {
-                txtDict[entry.key.lowercased()] = val
+        if case .bonjour(let txtRecord) = result.metadata {
+            for entry in txtRecord {
+                guard let val = txtRecord[entry.key], !val.isEmpty else { continue }
+                switch entry.key.lowercased() {
+                case "nickname": nickname = val
+                case "pet":      pet = val
+                case "port":     if let p = UInt16(val) { httpPort = p }
+                case "ip":       ip = val
+                default:         break
+                }
             }
         }
 
-        // Must have at least the IP to be useful
-        guard let ip = txtDict["ip"], !ip.isEmpty else {
-            print("[discovery] TXT for \(name) missing ip: \(txtDict)")
-            return
-        }
+        // Use IP from TXT if available, otherwise fall back to service name
+        let host = ip ?? "\(name).local"
 
-        let nickname = txtDict["nickname"] ?? name
-        let pet = txtDict["pet"] ?? "sprite"
-        let httpPort = txtDict["port"].flatMap(UInt16.init) ?? 1234
-
-        print("[discovery] peer ready: \(nickname) ip=\(ip) port=\(httpPort)")
+        print("[discovery] peer: \(nickname) host=\(host) port=\(httpPort)\(ip != nil ? "" : " (no ip yet)")")
 
         let peer = PeerInfo(
             instanceName: name,
             nickname: nickname,
             pet: pet,
-            host: ip,
-            port: httpPort
+            host: host,
+            port: httpPort,
+            ip: ip
         )
         DispatchQueue.main.async { [weak self] in
             self?.sessionManager.addPeer(peer)

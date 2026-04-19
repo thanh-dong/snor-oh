@@ -64,8 +64,9 @@ struct PeerInfo: Identifiable, Sendable {
     let instanceName: String
     let nickname: String
     let pet: String
-    let host: String   // hostname.local or IP address
+    let host: String   // IP address or hostname.local
     let port: UInt16
+    let ip: String?    // resolved IPv4 from TXT, nil if not yet known
 }
 
 struct VisitingDog: Identifiable, Sendable {
