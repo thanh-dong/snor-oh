@@ -83,11 +83,86 @@ final class BucketManagerTests: XCTestCase {
         XCTAssertEqual(manager.activeBucket.items.count, 2)
     }
 
-    func testNonAdjacentDuplicatesAllowed() {
+    // MARK: - Unique-item dedupe (promote-to-top)
+
+    func testNonAdjacentDuplicateTextPromotesExistingToTop() {
         manager.add(BucketItem(kind: .text, text: "a"), source: .clipboard)
         manager.add(BucketItem(kind: .text, text: "b"), source: .clipboard)
-        manager.add(BucketItem(kind: .text, text: "a"), source: .clipboard) // allowed
-        XCTAssertEqual(manager.activeBucket.items.count, 3)
+        manager.add(BucketItem(kind: .text, text: "a"), source: .clipboard)
+
+        XCTAssertEqual(manager.activeBucket.items.count, 2)
+        XCTAssertEqual(manager.activeBucket.items[0].text, "a",
+                       "Duplicate re-add should promote the existing item to the top")
+        XCTAssertEqual(manager.activeBucket.items[1].text, "b")
+    }
+
+    func testDuplicateURLPromotesExistingToTop() {
+        manager.add(BucketItem(kind: .url, urlMeta: .init(urlString: "https://x.test", title: "X")),
+                    source: .clipboard)
+        manager.add(BucketItem(kind: .url, urlMeta: .init(urlString: "https://y.test", title: "Y")),
+                    source: .clipboard)
+        manager.add(BucketItem(kind: .url, urlMeta: .init(urlString: "https://x.test", title: "X")),
+                    source: .clipboard)
+
+        XCTAssertEqual(manager.activeBucket.items.count, 2)
+        XCTAssertEqual(manager.activeBucket.items[0].urlMeta?.urlString, "https://x.test")
+    }
+
+    func testDuplicateColorPromotesExistingToTop() {
+        manager.add(BucketItem(kind: .color, colorHex: "#FF0000"), source: .clipboard)
+        manager.add(BucketItem(kind: .color, colorHex: "#00FF00"), source: .clipboard)
+        manager.add(BucketItem(kind: .color, colorHex: "#FF0000"), source: .clipboard)
+
+        XCTAssertEqual(manager.activeBucket.items.count, 2)
+        XCTAssertEqual(manager.activeBucket.items[0].colorHex, "#FF0000")
+    }
+
+    func testDuplicatePromotionRefreshesLastAccessedAt() {
+        manager.add(BucketItem(kind: .text, text: "hello"), source: .clipboard)
+        let originalAccessedAt = manager.activeBucket.items[0].lastAccessedAt
+
+        Thread.sleep(forTimeInterval: 0.02)
+
+        manager.add(BucketItem(kind: .text, text: "hello"), source: .clipboard)
+
+        let newAccessedAt = manager.activeBucket.items[0].lastAccessedAt
+        XCTAssertGreaterThan(newAccessedAt, originalAccessedAt)
+    }
+
+    func testDuplicateFilePathPromotesWithoutRedundantSidecar() async throws {
+        let src = tempRoot.appendingPathComponent("doc.txt")
+        try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
+        try "hello".data(using: .utf8)!.write(to: src)
+
+        await manager.add(fileAt: src, source: .panel)
+        let firstID = manager.activeBucket.items[0].id
+        let firstCachedPath = manager.activeBucket.items[0].fileRef?.cachedPath
+        XCTAssertNotNil(firstCachedPath)
+
+        await manager.add(fileAt: src, source: .panel)  // same file, second time
+
+        XCTAssertEqual(manager.activeBucket.items.count, 1,
+                       "Re-dragging the same file should not produce a duplicate")
+        XCTAssertEqual(manager.activeBucket.items[0].id, firstID,
+                       "Should be the same item promoted, not a new one")
+        XCTAssertEqual(manager.activeBucket.items[0].fileRef?.cachedPath, firstCachedPath,
+                       "Promotion should keep the original sidecar — no redundant copy")
+    }
+
+    func testDuplicateImageBytesPromotesWithoutRedundantSidecar() async throws {
+        let bytes = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x01, 0x02, 0x03])
+
+        await manager.add(imageData: bytes, source: .clipboard)
+        let firstID = manager.activeBucket.items[0].id
+        let firstCachedPath = manager.activeBucket.items[0].fileRef?.cachedPath
+
+        await manager.add(imageData: bytes, source: .clipboard)  // identical bytes
+
+        XCTAssertEqual(manager.activeBucket.items.count, 1)
+        XCTAssertEqual(manager.activeBucket.items[0].id, firstID,
+                       "Identical image bytes should promote the existing item")
+        XCTAssertEqual(manager.activeBucket.items[0].fileRef?.cachedPath, firstCachedPath,
+                       "No second sidecar written")
     }
 
     // MARK: - LRU by count

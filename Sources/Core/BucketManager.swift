@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import UniformTypeIdentifiers
+import CryptoKit
 
 /// Core state holder for the Bucket feature.
 ///
@@ -75,10 +76,15 @@ final class BucketManager {
 
     /// Inserts an item at the head (newest-first), fires `.bucketChanged`,
     /// enforces LRU caps, schedules a persist.
+    ///
+    /// **Dedupe semantics**: if an equivalent item already exists anywhere in
+    /// the bucket (not just at the head), the existing item is *promoted*
+    /// to the top with a refreshed `lastAccessedAt` — no duplicate is added.
+    /// This handles both the "⌘C same thing twice" and the "drag same file
+    /// twice" cases without bloating the bucket.
     func add(_ item: BucketItem, source: BucketChangeSource) {
-        // Dedupe against immediate previous item (clipboard noise).
-        if let head = activeBucket.items.first,
-           dedupeMatches(newItem: item, existing: head) {
+        if let existingIdx = duplicateIndex(of: item) {
+            promoteExisting(at: existingIdx, source: source)
             return
         }
         activeBucket.items.insert(item, at: 0)
@@ -87,10 +93,34 @@ final class BucketManager {
         schedulePersist()
     }
 
+    /// Moves the item at `idx` to the head of the bucket and refreshes
+    /// `lastAccessedAt`. Used for dedup hits — user sees the existing item
+    /// re-surface at the top of the list.
+    private func promoteExisting(at idx: Int, source: BucketChangeSource) {
+        var existing = activeBucket.items.remove(at: idx)
+        existing.lastAccessedAt = Date()
+        activeBucket.items.insert(existing, at: 0)
+        postChanged(change: .added, source: source, itemID: existing.id)
+        schedulePersist()
+    }
+
     /// Async entry point for file drops. Copies the source into the sidecar
     /// directory **before** inserting, so the item's `cachedPath` is populated
     /// and the bucket survives restart.
+    ///
+    /// Dedupes by `originalPath` *before* the sidecar copy — so re-dragging
+    /// the same file is a cheap no-op (no redundant disk I/O).
     func add(fileAt url: URL, source: BucketChangeSource, stackGroupID: UUID? = nil) async {
+        // Cheap path-based dedupe — no sidecar copy needed on a hit.
+        if let idx = activeBucket.items.firstIndex(where: { existing in
+            guard existing.kind == .file || existing.kind == .folder || existing.kind == .image,
+                  let p = existing.fileRef?.originalPath, !p.isEmpty else { return false }
+            return p == url.path
+        }) {
+            promoteExisting(at: idx, source: source)
+            return
+        }
+
         var isDir: ObjCBool = false
         FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir)
         let kind = classifyFile(url: url, isDirectory: isDir.boolValue)
@@ -126,7 +156,18 @@ final class BucketManager {
 
     /// Async entry point for raw image bytes (pasteboard image drops).
     /// Writes the PNG bytes into the sidecar and inserts with `cachedPath` set.
+    ///
+    /// Dedupes by SHA-256 content hash *before* the sidecar write — so
+    /// re-copying the same image is a cheap no-op that just re-surfaces the
+    /// existing item.
     func add(imageData data: Data, source: BucketChangeSource, stackGroupID: UUID? = nil) async {
+        let hash = sha256Hex(data)
+
+        if let idx = activeBucket.items.firstIndex(where: { $0.contentHash == hash }) {
+            promoteExisting(at: idx, source: source)
+            return
+        }
+
         let itemID = UUID()
         let cachedPath = try? await store.writeSidecar(
             data,
@@ -138,6 +179,7 @@ final class BucketManager {
             id: itemID,
             kind: .image,
             stackGroupID: stackGroupID,
+            contentHash: hash,
             fileRef: .init(
                 originalPath: "",
                 cachedPath: cachedPath,
@@ -216,23 +258,57 @@ final class BucketManager {
         }
     }
 
-    // MARK: - Dedupe helper (clipboard-focused)
+    // MARK: - Dedupe helper
 
-    /// Two items are "same" for clipboard-dedupe purposes if they're text
-    /// with equal payloads, URLs with equal URL strings, or colors with equal
-    /// hex. File/image items are never deduped (source path matters).
-    private func dedupeMatches(newItem: BucketItem, existing: BucketItem) -> Bool {
-        guard newItem.kind == existing.kind else { return false }
-        switch newItem.kind {
-        case .text, .richText:
-            return newItem.text == existing.text
-        case .url:
-            return newItem.urlMeta?.urlString == existing.urlMeta?.urlString
-        case .color:
-            return newItem.colorHex == existing.colorHex
-        case .file, .folder, .image:
-            return false
+    /// Returns the index of an existing item that is "the same" as
+    /// `candidate`, or nil if there's no match. The scan is across the whole
+    /// bucket — not just the head — so a non-adjacent duplicate (user ⌘C'd
+    /// A, then B, then A) resolves to a hit on the first A.
+    ///
+    /// Match rules (kinds must agree):
+    ///   - `.text` / `.richText`: payloads equal.
+    ///   - `.url`: URL strings equal.
+    ///   - `.color`: hex strings equal.
+    ///   - `.file` / `.folder`: either same `originalPath` or same
+    ///     `contentHash` (if both sides computed one).
+    ///   - `.image`: same `contentHash`.
+    ///
+    /// Files are *not* hashed on drop — path equality catches the common
+    /// "drag the same file twice" case cheaply. Images *are* hashed
+    /// (done in `add(imageData:)`) since there's no path to compare.
+    private func duplicateIndex(of candidate: BucketItem) -> Int? {
+        activeBucket.items.firstIndex { existing in
+            guard existing.kind == candidate.kind else { return false }
+            switch candidate.kind {
+            case .text, .richText:
+                return !(candidate.text ?? "").isEmpty
+                    && existing.text == candidate.text
+            case .url:
+                return !(candidate.urlMeta?.urlString ?? "").isEmpty
+                    && existing.urlMeta?.urlString == candidate.urlMeta?.urlString
+            case .color:
+                return !(candidate.colorHex ?? "").isEmpty
+                    && existing.colorHex == candidate.colorHex
+            case .file, .folder:
+                if let a = candidate.fileRef?.originalPath, !a.isEmpty,
+                   let b = existing.fileRef?.originalPath, !b.isEmpty,
+                   a == b { return true }
+                if let a = candidate.contentHash, let b = existing.contentHash {
+                    return a == b
+                }
+                return false
+            case .image:
+                if let a = candidate.contentHash, let b = existing.contentHash {
+                    return a == b
+                }
+                return false
+            }
         }
+    }
+
+    private func sha256Hex(_ data: Data) -> String {
+        let digest = SHA256.hash(data: data)
+        return digest.compactMap { String(format: "%02x", $0) }.joined()
     }
 
     // MARK: - LRU eviction
