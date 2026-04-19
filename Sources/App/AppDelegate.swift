@@ -68,6 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for observer in [mcpSayObserver, taskCompletedObserver, mcpReactObserver, trayObserver].compactMap({ $0 }) {
             NotificationCenter.default.removeObserver(observer)
         }
+        statusBarTimer?.invalidate()
         peerDiscovery?.stop()
         watchdog?.stop()
         httpServer?.stop()
@@ -109,14 +110,89 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Menu Bar
 
+    private var statusBarTimer: Timer?
+
     private func setupMenuBar() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem?.button {
             button.image = NSImage(systemSymbolName: "pawprint.fill", accessibilityDescription: "snor-oh")
-            button.image?.size = NSSize(width: 18, height: 18)
+            button.image?.size = NSSize(width: 16, height: 16)
+            button.imagePosition = .imageLeading
             button.action = #selector(toggleMascotWindow)
             button.target = self
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        }
+        updateStatusBarText()
+
+        // Refresh status bar text every 2s
+        let timer = Timer(timeInterval: 2.0, repeats: true) { [weak self] _ in
+            self?.updateStatusBarText()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        statusBarTimer = timer
+    }
+
+    private func updateStatusBarText() {
+        guard let button = statusItem?.button else { return }
+        let projects = sessionManager.projects
+
+        if projects.isEmpty {
+            button.attributedTitle = NSAttributedString()
+            return
+        }
+
+        // Count statuses
+        var counts: [(Status, Int)] = []
+        var map: [Status: Int] = [:]
+        for p in projects { map[p.status, default: 0] += 1 }
+        // Sort: non-idle first by priority desc, idle last
+        let sorted = map.sorted { a, b in
+            if a.key == .idle { return false }
+            if b.key == .idle { return true }
+            return a.key.priority > b.key.priority
+        }
+        counts = sorted.map { ($0.key, $0.value) }
+
+        // Build attributed string: " ● 2 ● 1 ● 1"
+        let result = NSMutableAttributedString()
+        let space = NSAttributedString(string: " ")
+
+        for (status, count) in counts {
+            let color = statusBarColor(status)
+            result.append(space)
+            // Colored dot
+            let dot = NSAttributedString(
+                string: "\u{25CF}",
+                attributes: [
+                    .foregroundColor: color,
+                    .font: NSFont.systemFont(ofSize: 7, weight: .bold),
+                    .baselineOffset: 1.0,
+                ]
+            )
+            result.append(dot)
+            // Count
+            let countStr = NSAttributedString(
+                string: "\(count)",
+                attributes: [
+                    .foregroundColor: NSColor.secondaryLabelColor,
+                    .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .medium),
+                ]
+            )
+            result.append(countStr)
+        }
+
+        button.attributedTitle = result
+    }
+
+    private func statusBarColor(_ status: Status) -> NSColor {
+        switch status {
+        case .busy:         return NSColor(red: 1.0, green: 0.42, blue: 0.42, alpha: 1)
+        case .idle:         return NSColor(red: 0.3, green: 0.85, blue: 0.39, alpha: 1)
+        case .service:      return NSColor(red: 0.37, green: 0.36, blue: 0.9, alpha: 1)
+        case .searching, .initializing:
+                            return NSColor(red: 1.0, green: 0.85, blue: 0.24, alpha: 1)
+        case .disconnected: return NSColor(red: 0.39, green: 0.39, blue: 0.4, alpha: 1)
+        case .visiting:     return .systemTeal
         }
     }
 
