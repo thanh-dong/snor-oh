@@ -42,7 +42,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         startHTTPServer()
         startWatchdog()
         startGitPoller()
-        startPeerDiscovery()
+        if UserDefaults.standard.object(forKey: DefaultsKey.peerDiscoveryEnabled) as? Bool ?? true {
+            startPeerDiscovery()
+        }
         setupMenuBar()
         createPanel()
         startBubbleObserving()
@@ -259,9 +261,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil,
             queue: .main
         ) { [weak self] _ in
+            guard let self else { return }
             let visible = UserDefaults.standard.object(forKey: DefaultsKey.trayVisible) as? Bool ?? true
-            self?.statusItem?.isVisible = visible
-            self?.applyTheme()
+            self.statusItem?.isVisible = visible
+            self.applyTheme()
+
+            // Toggle peer discovery on/off
+            let peerEnabled = UserDefaults.standard.object(forKey: DefaultsKey.peerDiscoveryEnabled) as? Bool ?? true
+            if peerEnabled && self.peerDiscovery == nil {
+                self.startPeerDiscovery()
+            } else if !peerEnabled && self.peerDiscovery != nil {
+                self.peerDiscovery?.stop()
+                self.peerDiscovery = nil
+                self.visitManager = nil
+                self.sessionManager.clearAllPeers()
+            }
         }
     }
 

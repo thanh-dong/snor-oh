@@ -38,6 +38,7 @@ struct GeneralTab: View {
     @AppStorage(DefaultsKey.panelSize) private var panelSize = "regular"
     @AppStorage(DefaultsKey.hideDock) private var hideDock = false
     @AppStorage(DefaultsKey.trayVisible) private var trayVisible = true
+    @AppStorage(DefaultsKey.peerDiscoveryEnabled) private var peerDiscoveryEnabled = true
     @State private var autoStartEnabled = false
     @State private var autoStartError: String?
     @State private var mcpInstalled = false
@@ -89,6 +90,9 @@ struct GeneralTab: View {
 
                 Toggle("Show in Menu Bar", isOn: $trayVisible)
                     .help("Shows the pawprint icon in the menu bar.")
+
+                Toggle("Peer Discovery", isOn: $peerDiscoveryEnabled)
+                    .help("Advertise on the local network and discover other snor-oh instances for visiting.")
             }
 
             Section("Claude Code Integration") {

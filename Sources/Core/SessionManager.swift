@@ -287,6 +287,12 @@ final class SessionManager {
         NotificationCenter.default.post(name: .peersChanged, object: nil)
     }
 
+    func clearAllPeers() {
+        peers.removeAll()
+        visiting = nil
+        NotificationCenter.default.post(name: .peersChanged, object: nil)
+    }
+
     // MARK: - Visiting
 
     func setVisiting(_ peerInstanceName: String) {

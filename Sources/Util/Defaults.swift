@@ -16,5 +16,6 @@ enum DefaultsKey {
     static let panelPositionY = "panelPositionY"
     static let mascotPositionX = "mascotPositionX"
     static let mascotPositionY = "mascotPositionY"
+    static let peerDiscoveryEnabled = "peerDiscoveryEnabled"
     static let devMode = "devMode"
 }
