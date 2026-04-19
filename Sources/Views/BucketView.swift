@@ -4,12 +4,17 @@ import UniformTypeIdentifiers
 
 /// Main bucket UI — search field + scrollable item list + toolbar.
 ///
-/// Hosted inside `SnorOhPanelView` as the alternate tab. Accepts drops through
+/// Hosted inside the standalone `BucketWindow`. Accepts drops through
 /// `BucketDropHandler` with `source = .panel`.
 struct BucketView: View {
 
     let manager: BucketManager
     let storeRootURL: URL
+    /// When true (standalone BucketWindow), the list expands to fill its
+    /// parent window. When false (embedded in a compact context), a 240pt
+    /// cap keeps it compact. Defaults to false so existing call sites behave
+    /// the same as before.
+    var fillAvailable: Bool = false
 
     @State private var query: String = ""
     @State private var dropTargeted = false
@@ -86,6 +91,7 @@ struct BucketView: View {
     private var content: some View {
         if visibleItems.isEmpty {
             emptyState
+                .frame(maxHeight: fillAvailable ? .infinity : nil)
         } else {
             ScrollView {
                 LazyVStack(spacing: 4) {
@@ -100,7 +106,7 @@ struct BucketView: View {
                 .padding(.horizontal, 6)
                 .padding(.vertical, 6)
             }
-            .frame(maxHeight: 240)
+            .frame(maxHeight: fillAvailable ? .infinity : 240)
         }
     }
 

@@ -24,14 +24,14 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
 
         let hostingView = NSHostingView(rootView: settingsView)
         let win = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 560),
+            contentRect: NSRect(x: 0, y: 0, width: 640, height: 600),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         win.title = "snor-oh Settings"
         win.contentView = hostingView
-        win.minSize = NSSize(width: 520, height: 440)
+        win.minSize = NSSize(width: 640, height: 440)
         win.center()
         win.isReleasedWhenClosed = false
         win.delegate = self

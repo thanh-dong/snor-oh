@@ -4,7 +4,9 @@ import UniformTypeIdentifiers
 
 // MARK: - Settings Window
 
-/// Standard macOS settings window with General, Ohh, Claude Code, and About tabs.
+/// Standard macOS settings window with General, Ohh, Bucket, Claude Code,
+/// and About tabs. Width grew from 520→640 when Bucket was added — the old
+/// width packed the 5 tab labels too tight.
 struct SettingsView: View {
     let sessionManager: SessionManager
     let spriteEngine: SpriteEngine
@@ -26,7 +28,7 @@ struct SettingsView: View {
             AboutTab()
                 .tabItem { Label("About", systemImage: "info.circle") }
         }
-        .frame(width: 520, height: 560)
+        .frame(minWidth: 640, idealWidth: 640, minHeight: 560, idealHeight: 600)
     }
 }
 

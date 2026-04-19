@@ -40,8 +40,7 @@ final class SnorOhPanelWindow: NSPanel {
             sessionManager: sessionManager,
             spriteEngine: spriteEngine,
             bubbleManager: bubbleManager,
-            visitManager: visitManager,
-            bucketManager: BucketManager.shared
+            visitManager: visitManager
         )
         let hostingView = NSHostingView(rootView: panelView)
         hostingView.sizingOptions = [.minSize, .intrinsicContentSize]

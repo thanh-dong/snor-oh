@@ -63,7 +63,6 @@ struct SnorOhPanelView: View {
     let spriteEngine: SpriteEngine
     let bubbleManager: BubbleManager
     let visitManager: VisitManager?
-    let bucketManager: BucketManager
     @State private var messagePeer: PeerInfo?
     @State private var messageText = ""
 
@@ -72,7 +71,6 @@ struct SnorOhPanelView: View {
     @AppStorage(DefaultsKey.theme) private var theme = "dark"
     @AppStorage(DefaultsKey.displayScale) private var displayScale = 1.0
     @AppStorage(DefaultsKey.glowMode) private var glowMode = "off"
-    @AppStorage(DefaultsKey.bucketActiveTab) private var activeTab = "sessions"
     @Environment(\.colorScheme) private var colorScheme
 
     private var size: SnorOhSize {
@@ -111,15 +109,7 @@ struct SnorOhPanelView: View {
                 speechBubble
             }
 
-            tabSwitcher
-
-            if activeTab == "bucket" {
-                BucketView(manager: bucketManager, storeRootURL: bucketManager.storeRootURL)
-                    .padding(.horizontal, 4)
-                    .padding(.bottom, 4)
-            } else {
-                sessionArea
-            }
+            sessionArea
         }
         .frame(width: size.panelWidth)
         .onAppear {
@@ -128,47 +118,6 @@ struct SnorOhPanelView: View {
         }
         .onChange(of: sessionManager.currentUI) { _, s in spriteEngine.setStatus(s) }
         .onChange(of: sessionManager.pet) { _, p in spriteEngine.setPet(p) }
-    }
-
-    // MARK: - Tab Switcher
-
-    private var tabSwitcher: some View {
-        HStack(spacing: 4) {
-            tabButton(title: "Sessions", value: "sessions")
-            tabButton(
-                title: bucketManager.activeBucket.items.isEmpty
-                    ? "Bucket"
-                    : "Bucket (\(bucketManager.activeBucket.items.count))",
-                value: "bucket"
-            )
-            Spacer()
-        }
-        .padding(.horizontal, 10)
-        .padding(.top, 4)
-    }
-
-    private func tabButton(title: String, value: String) -> some View {
-        let selected = activeTab == value
-        return Button {
-            withAnimation(.easeOut(duration: 0.15)) { activeTab = value }
-        } label: {
-            Text(title)
-                .font(.system(size: size.metaFont, weight: selected ? .semibold : .regular))
-                .foregroundStyle(
-                    selected
-                        ? (isDark ? Color.white : Color.black)
-                        : (isDark ? Color.white.opacity(0.45) : Color.black.opacity(0.4))
-                )
-                .padding(.vertical, 3)
-                .padding(.horizontal, 8)
-                .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(selected
-                            ? (isDark ? Color.white.opacity(0.1) : Color.black.opacity(0.08))
-                            : Color.clear)
-                )
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Mascot Stage

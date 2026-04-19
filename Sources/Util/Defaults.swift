@@ -22,8 +22,6 @@ enum DefaultsKey {
     static let creatorName = "creatorName"
 
     // MARK: - Bucket feature (Epic 01)
-    /// Active panel tab — "sessions" or "bucket".
-    static let bucketActiveTab = "bucketActiveTab"
     /// Whether clipboard capture is running. Mirrors `BucketSettings.captureClipboard`
     /// for quick @AppStorage access from UI toggles.
     static let bucketCaptureClipboard = "bucketCaptureClipboard"
@@ -37,6 +35,12 @@ enum DefaultsKey {
     static let bucketHotkey = "bucketHotkey"
     /// One-time first-launch bubble gate.
     static let bucketTipShown = "bucketTipShown"
+    /// Standalone `BucketWindow` position + size (replaces obsolete
+    /// `bucketActiveTab` — the bucket is no longer an in-panel tab).
+    static let bucketWindowX = "bucketWindowX"
+    static let bucketWindowY = "bucketWindowY"
+    static let bucketWindowWidth = "bucketWindowWidth"
+    static let bucketWindowHeight = "bucketWindowHeight"
 }
 
 enum DefaultsDefault {

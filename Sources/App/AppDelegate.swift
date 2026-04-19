@@ -30,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settingsWindow = SettingsWindow()
 
     // MARK: - Bucket (Epic 01)
+    private var bucketWindow: BucketWindow?
     private var bucketObserver: NSObjectProtocol?
 
     // MARK: - Lifecycle
@@ -110,10 +111,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Start clipboard monitor (respects BucketSettings.captureClipboard)
         ClipboardMonitor.shared.start()
 
-        // Global hotkey toggles panel + focuses Bucket tab
+        // Standalone bucket window — hidden until the hotkey shows it.
+        bucketWindow = BucketWindow(manager: BucketManager.shared)
+
+        // Global hotkey toggles *only* the bucket window. The main snor-oh
+        // panel (mascot + sessions) is unaffected.
         let binding = BucketManager.shared.settings.hotkey
         HotkeyRegistrar.shared.registerBucketToggle(binding: binding) { [weak self] in
-            self?.toggleBucketPanel()
+            self?.bucketWindow?.toggle()
         }
 
         // Status bar reflects bucket count too
@@ -124,14 +129,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Global-hotkey action: shows the panel (if hidden) and flips its tab to Bucket.
-    private func toggleBucketPanel() {
-        UserDefaults.standard.set("bucket", forKey: DefaultsKey.bucketActiveTab)
-        if panelWindow?.isVisible == true {
-            panelWindow?.orderOut(nil)
-        } else {
-            panelWindow?.orderFront(nil)
-        }
+    @objc func showBucket() {
+        bucketWindow?.makeKeyAndOrderFront(nil)
     }
 
     // MARK: - HTTP Server
@@ -297,6 +296,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showContextMenu(_ sender: NSStatusBarButton) {
         let menu = NSMenu()
         menu.addItem(withTitle: "Show", action: #selector(showPanel), keyEquivalent: "")
+        let bucketItem = NSMenuItem(
+            title: "Show Bucket",
+            action: #selector(showBucket),
+            keyEquivalent: "b"
+        )
+        bucketItem.keyEquivalentModifierMask = [.control, .option]
+        menu.addItem(bucketItem)
         menu.addItem(.separator())
         menu.addItem(withTitle: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
         menu.addItem(.separator())
