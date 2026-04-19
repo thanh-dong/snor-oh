@@ -208,11 +208,13 @@ struct SnorOhPanelView: View {
                     Text("\(projects.count) session\(projects.count == 1 ? "" : "s")")
                         .font(.system(size: size.metaFont, weight: .medium))
                         .foregroundStyle(isDark ? .white.opacity(0.5) : .black.opacity(0.4))
-
-                    statusBreakdown(projects)
                 }
 
                 Spacer()
+
+                if !projects.isEmpty {
+                    statusBreakdown(projects)
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
