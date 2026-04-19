@@ -7,7 +7,7 @@ final class VisitManager {
     private let discovery: PeerDiscovery
     private var returnWork: DispatchWorkItem?
 
-    static let maxVisitDuration: UInt64 = 60  // Cap at 60 seconds
+    static let maxVisitDuration: UInt64 = 60
 
     init(sessionManager: SessionManager, discovery: PeerDiscovery) {
         self.sessionManager = sessionManager
@@ -17,10 +17,12 @@ final class VisitManager {
     /// Visit a peer. Returns error string on failure, nil on success.
     func visit(peerInstanceName: String) -> String? {
         guard sessionManager.visiting == nil else {
+            print("[visit] already visiting someone")
             return "Already visiting someone"
         }
 
         guard let peer = sessionManager.peers[peerInstanceName] else {
+            print("[visit] peer not found: \(peerInstanceName)")
             return "Peer not found"
         }
 
@@ -28,11 +30,13 @@ final class VisitManager {
         let nickname = sessionManager.nickname
         let pet = sessionManager.pet
         let duration = min(UInt64(15), Self.maxVisitDuration)
+        let targetURL = "http://\(peer.ip):\(peer.port)/visit"
+
+        print("[visit] visiting \(peer.nickname) at \(targetURL)")
 
         // Mark as visiting
         sessionManager.setVisiting(peerInstanceName)
 
-        // Send visit request in background
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
 
@@ -43,25 +47,23 @@ final class VisitManager {
                 "duration_secs": duration
             ]
 
-            guard self.sendPost(
-                to: "http://\(peer.ip):\(peer.port)/visit",
-                payload: payload
-            ) else {
+            guard self.sendPost(to: targetURL, payload: payload) else {
+                print("[visit] POST failed to \(targetURL)")
                 DispatchQueue.main.async { self.sessionManager.clearVisiting() }
                 return
             }
 
-            // Schedule return after visit duration (cancellable)
+            print("[visit] visit started, returning in \(duration)s")
+
             let work = DispatchWorkItem { [weak self] in
                 guard let self else { return }
+                let endURL = "http://\(peer.ip):\(peer.port)/visit-end"
                 let endPayload: [String: Any] = [
                     "instance_name": ourInstanceName,
                     "nickname": nickname
                 ]
-                self.sendPost(
-                    to: "http://\(peer.ip):\(peer.port)/visit-end",
-                    payload: endPayload
-                )
+                self.sendPost(to: endURL, payload: endPayload)
+                print("[visit] visit ended")
                 DispatchQueue.main.async {
                     self.sessionManager.clearVisiting()
                 }
@@ -76,14 +78,11 @@ final class VisitManager {
         return nil
     }
 
-    /// Cancel the current visit early (e.g., user clicks "return").
     func cancelVisit() {
         returnWork?.cancel()
         returnWork = nil
-        // Execute the visit-end in background to avoid blocking the calling thread
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self else { return }
-            // Send visit-end if we know who we're visiting
             if let visiting = self.sessionManager.visiting,
                let peer = self.sessionManager.peers[visiting] {
                 let endPayload: [String: Any] = [
@@ -102,30 +101,51 @@ final class VisitManager {
 
     @discardableResult
     private func sendPost(to urlString: String, payload: [String: Any]) -> Bool {
-        guard let url = URL(string: urlString) else { return false }
+        // Clean up IPv6 link-local addresses — strip zone ID (e.g. %en0) which
+        // URLSession doesn't handle
+        let cleanURL = urlString.replacingOccurrences(
+            of: #"%[a-zA-Z0-9]+"#,
+            with: "",
+            options: .regularExpression
+        )
+
+        guard let url = URL(string: cleanURL) else {
+            print("[visit] invalid URL: \(cleanURL)")
+            return false
+        }
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 5
 
-        guard let body = try? JSONSerialization.data(withJSONObject: payload) else { return false }
+        guard let body = try? JSONSerialization.data(withJSONObject: payload) else {
+            print("[visit] failed to serialize payload")
+            return false
+        }
         request.httpBody = body
 
         var success = false
         let semaphore = DispatchSemaphore(value: 0)
 
         URLSession.shared.dataTask(with: request) { _, response, error in
-            if let http = response as? HTTPURLResponse, http.statusCode == 200 {
-                success = true
+            if let http = response as? HTTPURLResponse {
+                if http.statusCode == 200 {
+                    success = true
+                } else {
+                    print("[visit] HTTP \(http.statusCode) from \(cleanURL)")
+                }
             } else if let error {
-                print("[visit] request failed: \(error.localizedDescription)")
+                print("[visit] request to \(cleanURL) failed: \(error.localizedDescription)")
             }
             semaphore.signal()
         }.resume()
 
         let result = semaphore.wait(timeout: .now() + 10)
-        if result == .timedOut { return false }
+        if result == .timedOut {
+            print("[visit] request to \(cleanURL) timed out")
+            return false
+        }
         return success
     }
 }

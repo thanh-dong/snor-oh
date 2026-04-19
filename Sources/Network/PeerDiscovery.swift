@@ -171,8 +171,14 @@ final class PeerDiscovery {
 
         print("[discovery] found peer: \(name) nickname=\(nickname) pet=\(pet) port=\(httpPort)")
 
-        // Resolve IP by connecting to the service endpoint
-        let connection = NWConnection(to: result.endpoint, using: .tcp)
+        // Resolve IP: prefer IPv4, use TCP parameters that prefer IPv4
+        let tcpOptions = NWProtocolTCP.Options()
+        let params = NWParameters(tls: nil, tcp: tcpOptions)
+        params.preferNoProxies = true
+        if #available(macOS 14.0, *) {
+            params.requiredInterfaceType = .wifi
+        }
+        let connection = NWConnection(to: result.endpoint, using: params)
         var resolved = false
 
         connection.stateUpdateHandler = { [weak self, name, nickname, pet, httpPort] state in
@@ -185,16 +191,25 @@ final class PeerDiscovery {
                 guard !resolved else { break }
                 resolved = true
 
-                var ip = "127.0.0.1"
+                // Collect all available IPs from the connection path, prefer IPv4
+                var ipv4: String?
+                var ipv6: String?
                 if let path = connection.currentPath,
                    let endpoint = path.remoteEndpoint,
                    case .hostPort(let host, _) = endpoint {
                     switch host {
-                    case .ipv4(let addr): ip = "\(addr)"
-                    case .ipv6(let addr): ip = "[\(addr)]"
+                    case .ipv4(let addr): ipv4 = "\(addr)"
+                    case .ipv6(let addr):
+                        // Strip zone ID for URL compatibility
+                        let raw = "\(addr)"
+                        let clean = raw.replacingOccurrences(
+                            of: #"%[a-zA-Z0-9]+"#, with: "", options: .regularExpression
+                        )
+                        ipv6 = "[\(clean)]"
                     default: break
                     }
                 }
+                let ip = ipv4 ?? ipv6 ?? "127.0.0.1"
 
                 let peer = PeerInfo(
                     instanceName: name,
