@@ -1,46 +1,67 @@
-import { Ratelimit } from "@upstash/ratelimit";
-import { Redis } from "@upstash/redis";
+import IORedis, { type Redis } from "ioredis";
 import crypto from "node:crypto";
 
+const UPLOAD_LIMIT = 5;       // per IP per day
+const DOWNLOAD_LIMIT = 100;   // per IP per day
+const DAY_SECONDS = 24 * 60 * 60;
+
 let _redis: Redis | null = null;
-let _upload: Ratelimit | null = null;
-let _download: Ratelimit | null = null;
+
+function redisUrl(): string | undefined {
+  return (
+    process.env.snoroh_REDIS_URL ??
+    process.env.REDIS_URL ??
+    process.env.UPSTASH_REDIS_URL
+  );
+}
 
 function redis(): Redis {
   if (_redis) return _redis;
-  const url =
-    process.env.UPSTASH_REDIS_REST_URL ??
-    process.env.KV_REST_API_URL ??
-    process.env.STORAGE_REST_URL;
-  const token =
-    process.env.UPSTASH_REDIS_REST_TOKEN ??
-    process.env.KV_REST_API_TOKEN ??
-    process.env.STORAGE_REST_TOKEN;
-  if (!url || !token) throw new Error("Upstash env vars missing");
-  _redis = new Redis({ url, token });
+  const url = redisUrl();
+  if (!url) throw new Error("Redis env var missing (snoroh_REDIS_URL / REDIS_URL)");
+  _redis = new IORedis(url, {
+    maxRetriesPerRequest: 3,
+    lazyConnect: false,
+    // TLS is inferred from rediss:// scheme; for plain redis:// we don't force it.
+    tls: url.startsWith("rediss://") ? {} : undefined,
+  });
   return _redis;
 }
 
-export function uploadLimiter(): Ratelimit {
-  if (_upload) return _upload;
-  _upload = new Ratelimit({
-    redis: redis(),
-    limiter: Ratelimit.slidingWindow(5, "1 d"),
-    prefix: "snoroh:upload",
-    analytics: false,
-  });
-  return _upload;
+export interface LimitResult {
+  success: boolean;
+  remaining: number;
+  limit: number;
+  reset: number; // unix seconds when window resets
 }
 
-export function downloadLimiter(): Ratelimit {
-  if (_download) return _download;
-  _download = new Ratelimit({
-    redis: redis(),
-    limiter: Ratelimit.slidingWindow(100, "1 d"),
-    prefix: "snoroh:download",
-    analytics: false,
-  });
-  return _download;
+async function bucketLimit(kind: "upload" | "download", ipHash: string, limit: number): Promise<LimitResult> {
+  const bucket = Math.floor(Date.now() / 1000 / DAY_SECONDS);
+  const key = `snoroh:${kind}:${ipHash}:${bucket}`;
+  const reset = (bucket + 1) * DAY_SECONDS;
+
+  const client = redis();
+  const [countRes, _expRes] = await client
+    .multi()
+    .incr(key)
+    .expire(key, DAY_SECONDS)
+    .exec() as [[Error | null, number], [Error | null, number]];
+
+  const count = countRes?.[1] ?? 0;
+  return {
+    success: count <= limit,
+    remaining: Math.max(0, limit - count),
+    limit,
+    reset,
+  };
+}
+
+export function limitUpload(ipHash: string): Promise<LimitResult> {
+  return bucketLimit("upload", ipHash, UPLOAD_LIMIT);
+}
+
+export function limitDownload(ipHash: string): Promise<LimitResult> {
+  return bucketLimit("download", ipHash, DOWNLOAD_LIMIT);
 }
 
 export function hashIp(ip: string): string {

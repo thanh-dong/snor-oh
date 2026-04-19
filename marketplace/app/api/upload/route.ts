@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { validatePackage, ValidationError, MAX_FILE_BYTES } from "@/lib/validate";
 import { supabaseService, BUCKET } from "@/lib/supabase";
-import { uploadLimiter, clientIp, hashIp } from "@/lib/ratelimit";
+import { limitUpload, clientIp, hashIp } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -14,7 +14,7 @@ export async function POST(req: Request) {
   const ip = clientIp(req);
   const ipHash = hashIp(ip);
 
-  const { success, remaining, reset } = await uploadLimiter().limit(ipHash);
+  const { success, remaining, reset } = await limitUpload(ipHash);
   if (!success) {
     return NextResponse.json(
       { error: { code: "rate_limited", message: "Daily upload limit reached" } },

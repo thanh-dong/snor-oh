@@ -55,7 +55,9 @@ function postgresUrl(): string | undefined {
   return (
     process.env.POSTGRES_URL_NON_POOLING ??
     process.env.POSTGRES_URL ??
-    process.env.DATABASE_URL
+    process.env.DATABASE_URL ??
+    process.env.snoroh_POSTGRES_URL_NON_POOLING ??
+    process.env.snoroh_POSTGRES_URL
   );
 }
 

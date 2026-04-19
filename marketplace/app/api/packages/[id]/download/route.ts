@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseService, BUCKET } from "@/lib/supabase";
-import { downloadLimiter, clientIp, hashIp } from "@/lib/ratelimit";
+import { limitDownload, clientIp, hashIp } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 
@@ -8,7 +8,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   const { id } = await ctx.params;
 
   const ipHash = hashIp(clientIp(req));
-  const { success } = await downloadLimiter().limit(ipHash);
+  const { success } = await limitDownload(ipHash);
   if (!success) {
     return NextResponse.json(
       { error: { code: "rate_limited", message: "Daily download limit reached" } },

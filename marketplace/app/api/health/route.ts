@@ -4,13 +4,10 @@ import { supabaseService, BUCKET } from "@/lib/supabase";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const UPSTASH_VARS = [
-  "UPSTASH_REDIS_REST_URL",
-  "UPSTASH_REDIS_REST_TOKEN",
-  "KV_REST_API_URL",
-  "KV_REST_API_TOKEN",
-  "STORAGE_REST_URL",
-  "STORAGE_REST_TOKEN",
+const REDIS_VARS = [
+  "snoroh_REDIS_URL",
+  "REDIS_URL",
+  "UPSTASH_REDIS_URL",
 ];
 
 const SUPABASE_VARS = [
@@ -19,6 +16,10 @@ const SUPABASE_VARS = [
   "SUPABASE_URL",
   "SUPABASE_ANON_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
+  "snoroh_SUPABASE_URL",
+  "snoroh_SUPABASE_ANON_KEY",
+  "snoroh_SUPABASE_SERVICE_ROLE_KEY",
+  "snoroh_POSTGRES_URL_NON_POOLING",
 ];
 
 const OTHER_VARS = ["ADMIN_TOKEN", "IP_HASH_SALT"];
@@ -32,7 +33,7 @@ function presence(names: string[]): Record<string, boolean> {
 export async function GET() {
   const env = {
     supabase: presence(SUPABASE_VARS),
-    upstash: presence(UPSTASH_VARS),
+    redis: presence(REDIS_VARS),
     other: presence(OTHER_VARS),
   };
 
@@ -60,9 +61,9 @@ export async function GET() {
   }
 
   const ready = tableOk && bucketOk &&
-    (env.upstash.UPSTASH_REDIS_REST_URL || env.upstash.KV_REST_API_URL || env.upstash.STORAGE_REST_URL) &&
-    (env.supabase.NEXT_PUBLIC_SUPABASE_URL || env.supabase.SUPABASE_URL) &&
-    env.supabase.SUPABASE_SERVICE_ROLE_KEY;
+    (env.redis.snoroh_REDIS_URL || env.redis.REDIS_URL || env.redis.UPSTASH_REDIS_URL) &&
+    (env.supabase.NEXT_PUBLIC_SUPABASE_URL || env.supabase.SUPABASE_URL || env.supabase.snoroh_SUPABASE_URL) &&
+    (env.supabase.SUPABASE_SERVICE_ROLE_KEY || env.supabase.snoroh_SUPABASE_SERVICE_ROLE_KEY);
 
   return NextResponse.json({
     ready,
