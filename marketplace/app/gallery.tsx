@@ -34,11 +34,11 @@ export function Gallery() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-  const seenCursor = useRef<string | null>(null);
+  const seenCursor = useRef<string | null | undefined>(undefined);
 
   const loadMore = useCallback(async () => {
     if (loading || done) return;
-    if (seenCursor.current === cursor) return;
+    if (seenCursor.current === cursor) return; // undefined on first call, so first fetch proceeds
     seenCursor.current = cursor;
     setLoading(true);
     setError(null);
