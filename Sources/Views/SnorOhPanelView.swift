@@ -123,9 +123,13 @@ struct SnorOhPanelView: View {
 
     private var mascotStage: some View {
         ZStack {
-            AnimatedSpriteView(engine: spriteEngine)
+            let sprite = AnimatedSpriteView(engine: spriteEngine)
                 .frame(width: spriteSize, height: spriteSize)
-                .shadow(color: glowColor, radius: glowRadius)
+            if glowRadius > 0 {
+                sprite.shadow(color: glowColor, radius: glowRadius)
+            } else {
+                sprite
+            }
         }
         .frame(maxWidth: .infinity)
         .frame(height: spriteSize + (glowRadius > 0 ? 20 : 8))
