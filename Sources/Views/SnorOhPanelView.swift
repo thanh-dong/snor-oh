@@ -65,6 +65,7 @@ struct SnorOhPanelView: View {
     let visitManager: VisitManager?
     @State private var messagePeer: PeerInfo?
     @State private var messageText = ""
+    @State private var mascotDropTargeted = false
 
     @AppStorage(DefaultsKey.panelSize) private var sizeRaw = "regular"
     @AppStorage(DefaultsKey.sidebarCollapsed) private var collapsed = false
@@ -126,6 +127,17 @@ struct SnorOhPanelView: View {
         ZStack {
             let sprite = AnimatedSpriteView(engine: spriteEngine)
                 .frame(width: spriteSize, height: spriteSize)
+                .scaleEffect(mascotDropTargeted ? 1.08 : 1.0)
+                .shadow(
+                    color: mascotDropTargeted ? .orange.opacity(0.65) : .clear,
+                    radius: mascotDropTargeted ? 16 : 0
+                )
+                .overlay {
+                    if mascotDropTargeted {
+                        MascotDropHalo(size: spriteSize)
+                    }
+                }
+                .animation(.easeOut(duration: 0.18), value: mascotDropTargeted)
             if glowRadius > 0 {
                 sprite.shadow(color: glowColor, radius: glowRadius)
             } else {
@@ -135,7 +147,10 @@ struct SnorOhPanelView: View {
         .frame(maxWidth: .infinity)
         .frame(height: spriteSize + (glowRadius > 0 ? 20 : 8))
         .padding(.top, 4)
-        .onDrop(of: BucketDropHandler.supportedUTTypes, isTargeted: nil) { providers in
+        .onDrop(
+            of: BucketDropHandler.supportedUTTypes,
+            isTargeted: $mascotDropTargeted
+        ) { providers in
             BucketDropHandler.ingest(providers: providers, source: .mascot)
         }
         .contextMenu { mascotContextMenu }

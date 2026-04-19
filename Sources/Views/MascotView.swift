@@ -8,6 +8,7 @@ struct MascotView: View {
 
     @AppStorage(DefaultsKey.displayScale) private var displayScale = 1.0
     @AppStorage(DefaultsKey.glowMode) private var glowMode = "off"
+    @State private var dropTargeted = false
 
     private var spriteSize: CGFloat { SpriteConfig.frameBasePx * displayScale }
 
@@ -30,11 +31,25 @@ struct MascotView: View {
             .animation(.easeOut(duration: 0.2), value: bubbleManager.isVisible)
             .frame(height: 30)
 
-            // Animated sprite with glow effect
+            // Animated sprite with glow effect + drop-target placeholder
             AnimatedSpriteView(engine: spriteEngine)
                 .frame(width: spriteSize, height: spriteSize)
                 .shadow(color: glowColor, radius: glowMode == "off" ? 0 : 12)
-                .onDrop(of: BucketDropHandler.supportedUTTypes, isTargeted: nil) { providers in
+                .scaleEffect(dropTargeted ? 1.08 : 1.0)
+                .shadow(
+                    color: dropTargeted ? .orange.opacity(0.65) : .clear,
+                    radius: dropTargeted ? 16 : 0
+                )
+                .overlay {
+                    if dropTargeted {
+                        MascotDropHalo(size: spriteSize)
+                    }
+                }
+                .animation(.easeOut(duration: 0.18), value: dropTargeted)
+                .onDrop(
+                    of: BucketDropHandler.supportedUTTypes,
+                    isTargeted: $dropTargeted
+                ) { providers in
                     BucketDropHandler.ingest(providers: providers, source: .mascot)
                 }
 
@@ -81,6 +96,46 @@ struct MascotView: View {
 
     static func windowHeight(scale: CGFloat, hasVisitors: Bool) -> CGFloat {
         SpriteConfig.frameBasePx * scale + heightPadding + (hasVisitors ? 60 : 0)
+    }
+}
+
+/// Drop-target halo that appears around the mascot while the user is
+/// dragging content over it. Also used by `SnorOhPanelView.mascotStage`.
+///
+/// Renders a pulsing orange ring + a small "+" badge so it's obvious the
+/// mascot will accept the drop.
+struct MascotDropHalo: View {
+    let size: CGFloat
+
+    @State private var pulse = false
+
+    var body: some View {
+        ZStack {
+            // Outer pulsing ring
+            Circle()
+                .stroke(Color.orange.opacity(0.85), lineWidth: 3)
+                .frame(width: size * 1.15, height: size * 1.15)
+                .scaleEffect(pulse ? 1.06 : 1.0)
+                .opacity(pulse ? 0.6 : 1.0)
+
+            // Soft fill inside the ring
+            Circle()
+                .fill(Color.orange.opacity(0.10))
+                .frame(width: size * 1.15, height: size * 1.15)
+
+            // "+" affordance in the top-right
+            Image(systemName: "plus.circle.fill")
+                .font(.system(size: max(14, size * 0.22), weight: .semibold))
+                .foregroundStyle(.white, .orange)
+                .offset(x: size * 0.42, y: -size * 0.42)
+                .shadow(color: .black.opacity(0.25), radius: 2)
+        }
+        .transition(.opacity.combined(with: .scale(scale: 0.92)))
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                pulse = true
+            }
+        }
     }
 }
 
