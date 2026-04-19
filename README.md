@@ -56,13 +56,17 @@ source /Applications/snor-oh.app/Contents/Resources/Scripts/terminal-mirror.fish
 
 **Panel** — Tamagotchi-style layout: mascot hero on top, collapsible session list below with status summary and per-project status rails.
 
-**Menu Bar** — Status icon shows colored dots with session counts. Speech bubbles pop from the icon when the panel is hidden.
+**Bucket** — Standalone floating shelf (`⌃⌥B` to toggle) for stashing anything during your day: files, URLs, images, text, colors. Drop onto the mascot or `⌘C` anything to add; drag items out of the bucket into any app to paste them. Items stay unique (re-adding promotes the existing item to the top instead of duplicating), with LRU eviction by count and disk size. Terminals and password managers are ignored by default so selected text and secrets are never captured.
 
-**Settings** — General (theme, glow, size, MCP install/uninstall), Ohh (pet selection, display scale, Smart Import, .snoroh export/import), Claude Code (plugin/skill/command/MCP/hook manager), About.
+**Menu Bar** — Status icon shows colored dots with session counts, plus an orange dot for bucket-item count. Speech bubbles pop from the icon when the panel is hidden.
+
+**Settings** — General (theme, glow, size, MCP install/uninstall), Ohh (pet selection, display scale, Smart Import, .snoroh export/import, marketplace upload), Bucket (clipboard capture, ignored apps, capacity), Claude Code (plugin/skill/command/MCP/hook manager), About.
 
 **Smart Import** — Upload any sprite sheet PNG, auto-detect frames (background removal, row/column detection), assign frame ranges per status, preview animations.
 
-**Custom Pets** — Create unlimited custom pets via Smart Import or .snoroh file import. Stored at `~/.snor-oh/custom-ohhs.json` + `~/.snor-oh/custom-sprites/`.
+**Custom Pets** — Create unlimited custom pets via Smart Import or `.snoroh` file import. Stored at `~/.snor-oh/custom-ohhs.json` + `~/.snor-oh/custom-sprites/`. Share your pets with others or browse community submissions at the marketplace — see below.
+
+**Marketplace** — [**snor-oh.vercel.app**](https://snor-oh.vercel.app) — browse and download community-submitted pets, or upload your own directly from **Settings → Ohh → Share to Marketplace**.
 
 **Peer Discovery** — Finds other snor-oh instances on LAN via Bonjour. Visit peers — your mascot appears on their screen.
 
@@ -80,7 +84,7 @@ source /Applications/snor-oh.app/Contents/Resources/Scripts/terminal-mirror.fish
 
 ```bash
 swift build && swift run    # build & run
-swift test                  # 19 unit tests
+swift test                  # 66 unit tests
 bash Scripts/build-release.sh  # release .app
 ```
 
