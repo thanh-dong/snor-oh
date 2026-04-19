@@ -3,73 +3,60 @@ import AppKit
 
 // MARK: - Panel Size
 
-/// Configurable size tiers for the session panel, inspired by snor-oh.
 enum SnorOhSize: String, CaseIterable {
-    case compact
-    case regular
-    case large
-
-    var rowHeight: CGFloat {
-        switch self {
-        case .compact: return 28
-        case .regular: return 32
-        case .large:   return 36
-        }
-    }
+    case compact, regular, large
 
     var panelWidth: CGFloat {
         switch self {
-        case .compact: return 300
-        case .regular: return 360
-        case .large:   return 420
+        case .compact: return 240
+        case .regular: return 280
+        case .large:   return 320
         }
     }
 
     var projectFont: CGFloat {
         switch self {
-        case .compact: return 13
-        case .regular: return 15
-        case .large:   return 16
+        case .compact: return 11
+        case .regular: return 12
+        case .large:   return 13
         }
     }
 
     var metaFont: CGFloat {
         switch self {
-        case .compact: return 10
-        case .regular: return 11
-        case .large:   return 12
+        case .compact: return 9
+        case .regular: return 10
+        case .large:   return 11
         }
     }
 
     var dotSize: CGFloat {
         switch self {
-        case .compact: return 6
-        case .regular: return 7
-        case .large:   return 8
+        case .compact: return 5
+        case .regular: return 6
+        case .large:   return 7
         }
     }
 
-    var cardCornerRadius: CGFloat {
+    var rowHeight: CGFloat {
         switch self {
-        case .compact: return 10
-        case .regular: return 12
-        case .large:   return 14
+        case .compact: return 26
+        case .regular: return 30
+        case .large:   return 34
         }
     }
 
-    var headerSpriteSize: CGFloat {
+    var heroSpriteSize: CGFloat {
         switch self {
-        case .compact: return 56
-        case .regular: return 72
-        case .large:   return 88
+        case .compact: return 64
+        case .regular: return 80
+        case .large:   return 96
         }
     }
 }
 
-// MARK: - Panel View
+// MARK: - Panel View (Tamagotchi layout)
 
-/// Compact unified panel: small mascot in header, session cards below.
-/// Designed to stay tiny and unobtrusive on the desktop.
 struct SnorOhPanelView: View {
     let sessionManager: SessionManager
     let spriteEngine: SpriteEngine
@@ -94,9 +81,8 @@ struct SnorOhPanelView: View {
         }
     }
 
-    /// Header mascot size = base tier size * user display scale.
-    private var mascotSize: CGFloat {
-        size.headerSpriteSize * displayScale
+    private var spriteSize: CGFloat {
+        size.heroSpriteSize * displayScale
     }
 
     private var glowColor: Color {
@@ -107,21 +93,26 @@ struct SnorOhPanelView: View {
         }
     }
 
+    private var glowRadius: CGFloat {
+        glowMode == "off" ? 0 : 8
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            panelHeader
+            // Mascot stage
+            mascotStage
 
-            // Speech bubble (temporary, only when visible)
+            // Speech bubble
             if bubbleManager.isVisible {
-                speechBubbleRow
+                speechBubble
             }
 
-            if !collapsed {
-                if sessionManager.projects.isEmpty {
-                    emptyState
-                } else {
-                    contentArea
-                }
+            // Summary bar (always visible, acts as collapse toggle)
+            summaryBar
+
+            // Project list (collapsible)
+            if !collapsed && !sessionManager.projects.isEmpty {
+                projectList
             }
         }
         .frame(width: size.panelWidth)
@@ -141,77 +132,167 @@ struct SnorOhPanelView: View {
             spriteEngine.setPet(sessionManager.pet)
             spriteEngine.setStatus(sessionManager.currentUI)
         }
-        .onChange(of: sessionManager.currentUI) { _, newStatus in
-            spriteEngine.setStatus(newStatus)
-        }
-        .onChange(of: sessionManager.pet) { _, newPet in
-            spriteEngine.setPet(newPet)
-        }
+        .onChange(of: sessionManager.currentUI) { _, s in spriteEngine.setStatus(s) }
+        .onChange(of: sessionManager.pet) { _, p in spriteEngine.setPet(p) }
     }
 
-    // MARK: - Header (title + count + collapse)
+    // MARK: - Mascot Stage
 
-    private var panelHeader: some View {
-        HStack(spacing: 8) {
-            Text("snor-oh")
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .foregroundStyle(isDark ? .white.opacity(0.7) : .black.opacity(0.6))
-
-            // Count badge
-            Text("\(sessionManager.projects.count)")
-                .font(.system(size: 10, weight: .bold, design: .rounded))
-                .foregroundStyle(isDark ? .white.opacity(0.6) : .black.opacity(0.5))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(
-                    Capsule()
-                        .fill(isDark ? Color.white.opacity(0.1) : Color.black.opacity(0.08))
-                )
-
-            Spacer()
-
-            // Overall status dot
-            Circle()
-                .fill(overallStatusColor)
-                .frame(width: 8, height: 8)
-
-            Button {
-                withAnimation(.spring(duration: 0.25)) {
-                    collapsed.toggle()
-                }
-            } label: {
-                Image(systemName: collapsed ? "chevron.down" : "chevron.up")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(isDark ? .white.opacity(0.5) : .black.opacity(0.4))
-            }
-            .buttonStyle(.plain)
+    private var mascotStage: some View {
+        ZStack {
+            AnimatedSpriteView(engine: spriteEngine)
+                .frame(width: spriteSize, height: spriteSize)
+                .shadow(color: glowColor, radius: glowRadius)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .frame(height: spriteSize + (glowRadius > 0 ? 20 : 8))
+        .padding(.top, 12)
     }
 
-    // MARK: - Speech Bubble Row
+    // MARK: - Speech Bubble
 
-    private var speechBubbleRow: some View {
+    private var speechBubble: some View {
         Text(bubbleManager.currentMessage ?? "")
-            .font(.system(size: 10, weight: .medium))
-            .foregroundStyle(isDark ? .white.opacity(0.7) : .black.opacity(0.6))
-            .lineLimit(1)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(isDark ? Color.white.opacity(0.04) : Color.black.opacity(0.03))
-            .transition(.asymmetric(
-                insertion: .opacity.combined(with: .move(edge: .top)),
-                removal: .opacity
-            ))
+            .font(.system(size: size.metaFont, weight: .medium))
+            .foregroundStyle(isDark ? .white.opacity(0.6) : .black.opacity(0.5))
+            .lineLimit(2)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 4)
+            .transition(.opacity.combined(with: .scale(scale: 0.95)))
             .animation(.easeOut(duration: 0.2), value: bubbleManager.isVisible)
     }
 
-    // MARK: - Status Color
+    // MARK: - Summary Bar
 
-    private var overallStatusColor: Color {
-        switch sessionManager.currentUI {
+    private var summaryBar: some View {
+        Button {
+            withAnimation(.spring(duration: 0.25)) {
+                collapsed.toggle()
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: collapsed ? "chevron.right" : "chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(isDark ? .white.opacity(0.35) : .black.opacity(0.3))
+
+                let projects = sessionManager.projects
+                if projects.isEmpty {
+                    Text("no sessions")
+                        .font(.system(size: size.metaFont, weight: .medium))
+                        .foregroundStyle(isDark ? .white.opacity(0.3) : .black.opacity(0.25))
+                } else {
+                    Text("\(projects.count) session\(projects.count == 1 ? "" : "s")")
+                        .font(.system(size: size.metaFont, weight: .medium))
+                        .foregroundStyle(isDark ? .white.opacity(0.5) : .black.opacity(0.4))
+
+                    // Status breakdown
+                    statusBreakdown(projects)
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func statusBreakdown(_ projects: [ProjectStatus]) -> some View {
+        let counts = statusCounts(projects)
+        HStack(spacing: 8) {
+            ForEach(counts, id: \.status) { item in
+                HStack(spacing: 3) {
+                    Circle()
+                        .fill(colorFor(item.status))
+                        .frame(width: size.dotSize, height: size.dotSize)
+                    Text("\(item.count)")
+                        .font(.system(size: size.metaFont, weight: .medium))
+                        .foregroundStyle(isDark ? .white.opacity(0.45) : .black.opacity(0.4))
+                }
+            }
+        }
+    }
+
+    private struct StatusCount {
+        let status: Status
+        let count: Int
+    }
+
+    private func statusCounts(_ projects: [ProjectStatus]) -> [StatusCount] {
+        var map: [Status: Int] = [:]
+        for p in projects { map[p.status, default: 0] += 1 }
+        // Show non-idle statuses first, then idle
+        return map.sorted { a, b in
+            if a.key == .idle { return false }
+            if b.key == .idle { return true }
+            return a.key.priority > b.key.priority
+        }
+        .map { StatusCount(status: $0.key, count: $0.value) }
+    }
+
+    // MARK: - Project List
+
+    private var projectList: some View {
+        VStack(spacing: 2) {
+            ForEach(sessionManager.projects) { project in
+                projectRow(project)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.bottom, 10)
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
+    private func projectRow(_ project: ProjectStatus) -> some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(colorFor(project.status))
+                .frame(width: size.dotSize, height: size.dotSize)
+
+            Text(project.name)
+                .font(.system(size: size.projectFont, weight: .medium))
+                .foregroundStyle(isDark ? .white.opacity(0.85) : .black.opacity(0.8))
+                .lineLimit(1)
+
+            Spacer()
+
+            if project.status != .idle {
+                Text(project.status.displayLabel)
+                    .font(.system(size: size.metaFont, weight: .medium))
+                    .foregroundStyle(colorFor(project.status))
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .frame(height: size.rowHeight)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isDark ? Color.white.opacity(0.04) : Color.black.opacity(0.03))
+        )
+        .onTapGesture {
+            openInVSCode(path: project.path)
+        }
+        .contextMenu {
+            Button("Open in VS Code") { openInVSCode(path: project.path) }
+            Button("Open in Terminal") { openInTerminal(path: project.path) }
+            Button("Reveal in Finder") {
+                NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: project.path)
+            }
+            Divider()
+            Button("Copy Path") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(project.path, forType: .string)
+            }
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func colorFor(_ status: Status) -> Color {
+        switch status {
         case .busy:         return Color(red: 1.0, green: 0.42, blue: 0.42)
         case .idle:         return Color(red: 0.3, green: 0.85, blue: 0.39)
         case .service:      return Color(red: 0.37, green: 0.36, blue: 0.9)
@@ -222,189 +303,10 @@ struct SnorOhPanelView: View {
         }
     }
 
-    // MARK: - Empty State (mascot only, no sessions)
-
-    private var emptyState: some View {
-        VStack(spacing: 6) {
-            AnimatedSpriteView(engine: spriteEngine)
-                .frame(width: spriteSize, height: spriteSize)
-                .shadow(color: glowColor, radius: glowMode == "off" ? 0 : 8)
-            Text("No active sessions")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(isDark ? .white.opacity(0.3) : .black.opacity(0.25))
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-        .padding(.bottom, 4)
-    }
-
-    // MARK: - Content Area (mascot left + project list right)
-
-    /// Padding around sprite for glow shadow room.
-    private var glowInset: CGFloat { glowMode == "off" ? 4 : 10 }
-
-    /// Sprite size respects user's display scale setting.
-    private var spriteSize: CGFloat { mascotSize }
-
-    /// Container wraps the sprite with glow padding, capped at 40% of panel width.
-    private var mascotContainerSize: CGFloat {
-        min(mascotSize + glowInset * 2, size.panelWidth * 0.4)
-    }
-
-    private var contentArea: some View {
-        HStack(alignment: .center, spacing: 0) {
-            // Fixed square container — sprite centered with glow room
-            ZStack {
-                AnimatedSpriteView(engine: spriteEngine)
-                    .frame(width: spriteSize, height: spriteSize)
-                    .shadow(color: glowColor, radius: glowMode == "off" ? 0 : 8)
-            }
-            .frame(width: mascotContainerSize, height: mascotContainerSize)
-
-            // Project list
-            VStack(spacing: 4) {
-                ForEach(sessionManager.projects) { project in
-                    SnorOhCard(project: project, size: size, isDark: isDark)
-                }
-            }
-            .padding(.trailing, 8)
-            .padding(.vertical, 6)
-        }
-        .padding(.bottom, 4)
-    }
-}
-
-// MARK: - Project Card
-
-/// Per-project card with large animated sprite, snor-oh-style layout.
-struct SnorOhCard: View {
-    let project: ProjectStatus
-    let size: SnorOhSize
-    let isDark: Bool
-
-    @State private var isHovered = false
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Text(project.name)
-                .font(.system(size: size.projectFont, weight: .semibold))
-                .foregroundStyle(isDark ? .white.opacity(0.9) : .black.opacity(0.85))
-                .lineLimit(1)
-
-            Spacer()
-
-            // Only show status pill when not idle
-            if project.status != .idle {
-                statusPill
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 4)
-        .frame(height: size.rowHeight)
-        .background(cardBackground)
-        // Status rail (right edge colored bar)
-        .overlay(alignment: .trailing) {
-            RoundedRectangle(cornerRadius: 2)
-                .fill(statusColor)
-                .frame(width: 3)
-                .padding(.vertical, 8)
-        }
-        // Close button (top-right, visible on hover)
-        .overlay(alignment: .topTrailing) {
-            if isHovered {
-                Image(systemName: "xmark")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(isDark ? .white.opacity(0.4) : .black.opacity(0.35))
-                    .frame(width: 16, height: 16)
-                    .background(
-                        Circle()
-                            .fill(isDark ? Color.white.opacity(0.1) : Color.black.opacity(0.08))
-                    )
-                    .padding(6)
-                    .transition(.opacity)
-            }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: size.cardCornerRadius))
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.15)) {
-                isHovered = hovering
-            }
-        }
-        .onTapGesture {
-            openInVSCode(path: project.path)
-        }
-        .contextMenu {
-            Button("Open in VS Code") { openInVSCode(path: project.path) }
-            Button("Open in Terminal") { openInTerminal(path: project.path) }
-            Button("Reveal in Finder") { NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: project.path) }
-            Divider()
-            Button("Copy Path") {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(project.path, forType: .string)
-            }
-        }
-    }
-
-    // MARK: - Card Background
-
-    private var cardBackground: some View {
-        RoundedRectangle(cornerRadius: size.cardCornerRadius)
-            .fill(
-                LinearGradient(
-                    colors: isHovered
-                        ? [isDark ? Color.white.opacity(0.10) : Color.black.opacity(0.06),
-                           isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.03)]
-                        : [isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.04),
-                           isDark ? Color.white.opacity(0.03) : Color.black.opacity(0.02)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-    }
-
-    // MARK: - Status Pill
-
-    private var statusPill: some View {
-        HStack(spacing: 4) {
-            Circle()
-                .fill(statusColor)
-                .frame(width: size.dotSize, height: size.dotSize)
-
-            Text(project.status.displayLabel)
-                .font(.system(size: size.metaFont, weight: .medium))
-                .foregroundStyle(statusColor)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(
-            Capsule()
-                .fill(statusColor.opacity(isDark ? 0.15 : 0.12))
-        )
-    }
-
-    // MARK: - Helpers
-
-    private var statusColor: Color {
-        switch project.status {
-        case .busy:         return Color(red: 1.0, green: 0.42, blue: 0.42)  // #ff6b6b
-        case .idle:         return Color(red: 0.3, green: 0.85, blue: 0.39)  // #4cd964
-        case .service:      return Color(red: 0.37, green: 0.36, blue: 0.9)  // #5e5ce6
-        case .searching, .initializing:
-                            return Color(red: 1.0, green: 0.85, blue: 0.24)  // #ffd93d
-        case .disconnected: return Color(red: 0.39, green: 0.39, blue: 0.4)  // #636366
-        case .visiting:     return .teal
-        }
-    }
-
     private func openInVSCode(path: String) {
         let url = URL(fileURLWithPath: path)
-        let bundleIDs = [
-            "com.microsoft.VSCode",
-            "com.microsoft.VSCodeInsiders",
-            "com.vscodium",
-        ]
-        for bundleID in bundleIDs {
-            if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
+        for bid in ["com.microsoft.VSCode", "com.microsoft.VSCodeInsiders", "com.vscodium"] {
+            if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bid) {
                 let config = NSWorkspace.OpenConfiguration()
                 NSWorkspace.shared.open([url], withApplicationAt: appURL, configuration: config)
                 return
