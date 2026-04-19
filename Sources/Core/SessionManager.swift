@@ -12,6 +12,14 @@ extension Notification.Name {
     static let visitorArrived = Notification.Name("visitorArrived")
     static let visitorLeft = Notification.Name("visitorLeft")
     static let discoveryHint = Notification.Name("discoveryHint")
+
+    /// Posted by `BucketManager` on every item add/remove/pin/clear.
+    /// `userInfo`:
+    ///   - `"source": String` — see `BucketChangeSource`
+    ///   - `"change": String` — see `BucketChangeKind`
+    ///   - `"itemID": UUID?` — nil on bulk changes like `.cleared`
+    /// Contract source: docs/prd/bucket/REVIEW.md §6.
+    static let bucketChanged = Notification.Name("bucketChanged")
 }
 
 // MARK: - SessionManager

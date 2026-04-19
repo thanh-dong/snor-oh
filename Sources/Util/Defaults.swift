@@ -20,6 +20,23 @@ enum DefaultsKey {
     static let devMode = "devMode"
     static let marketplaceURL = "marketplaceURL"
     static let creatorName = "creatorName"
+
+    // MARK: - Bucket feature (Epic 01)
+    /// Active panel tab — "sessions" or "bucket".
+    static let bucketActiveTab = "bucketActiveTab"
+    /// Whether clipboard capture is running. Mirrors `BucketSettings.captureClipboard`
+    /// for quick @AppStorage access from UI toggles.
+    static let bucketCaptureClipboard = "bucketCaptureClipboard"
+    /// Max items in the bucket (LRU eviction at this count).
+    static let bucketMaxItems = "bucketMaxItems"
+    /// Max total sidecar storage in MB (LRU eviction by size).
+    static let bucketMaxStorageMB = "bucketMaxStorageMB"
+    /// JSON-encoded `[String]` of ignored bundle IDs.
+    static let bucketIgnoredBundleIDs = "bucketIgnoredBundleIDs"
+    /// JSON-encoded `HotkeyBinding`.
+    static let bucketHotkey = "bucketHotkey"
+    /// One-time first-launch bubble gate.
+    static let bucketTipShown = "bucketTipShown"
 }
 
 enum DefaultsDefault {

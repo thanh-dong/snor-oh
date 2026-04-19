@@ -17,6 +17,9 @@ struct SettingsView: View {
             OhhTab(sessionManager: sessionManager, spriteEngine: spriteEngine)
                 .tabItem { Label("Ohh", systemImage: "pawprint") }
 
+            BucketTab(manager: BucketManager.shared)
+                .tabItem { Label("Bucket", systemImage: "tray.full") }
+
             ClaudeCodeTab()
                 .tabItem { Label("Claude Code", systemImage: "terminal") }
 
@@ -24,6 +27,123 @@ struct SettingsView: View {
                 .tabItem { Label("About", systemImage: "info.circle") }
         }
         .frame(width: 520, height: 560)
+    }
+}
+
+// MARK: - Bucket Tab
+
+struct BucketTab: View {
+    let manager: BucketManager
+
+    @State private var newIgnoreEntry: String = ""
+
+    /// All sliders/toggles bind directly to `manager.settings` via these
+    /// computed bindings so the UI stays in sync with any external mutation
+    /// (e.g. programmatic `updateSettings`, cross-window changes, disk reload).
+    private var captureClipboardBinding: Binding<Bool> {
+        Binding(
+            get: { manager.settings.captureClipboard },
+            set: { new in
+                var s = manager.settings
+                s.captureClipboard = new
+                manager.updateSettings(s)
+            }
+        )
+    }
+
+    private var maxItemsBinding: Binding<Double> {
+        Binding(
+            get: { Double(manager.settings.maxItems) },
+            set: { new in
+                var s = manager.settings
+                s.maxItems = Int(new)
+                manager.updateSettings(s)
+            }
+        )
+    }
+
+    private var maxStorageMBBinding: Binding<Double> {
+        Binding(
+            get: { Double(manager.settings.maxStorageBytes / 1_000_000) },
+            set: { new in
+                var s = manager.settings
+                s.maxStorageBytes = Int64(new) * 1_000_000
+                manager.updateSettings(s)
+            }
+        )
+    }
+
+    var body: some View {
+        Form {
+            Section("Clipboard Capture") {
+                Toggle("Automatically capture clipboard", isOn: captureClipboardBinding)
+
+                if manager.settings.captureClipboard {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Ignored apps (bundle IDs)")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+
+                        ForEach(Array(manager.settings.ignoredBundleIDs).sorted(), id: \.self) { bid in
+                            HStack {
+                                Text(bid)
+                                    .font(.system(size: 11, design: .monospaced))
+                                Spacer()
+                                Button {
+                                    var s = manager.settings
+                                    s.ignoredBundleIDs.remove(bid)
+                                    manager.updateSettings(s)
+                                } label: {
+                                    Image(systemName: "minus.circle")
+                                        .foregroundStyle(.red)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+
+                        HStack {
+                            TextField("e.g. com.1password.1password", text: $newIgnoreEntry)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(size: 11, design: .monospaced))
+                            Button("Add") {
+                                let trimmed = newIgnoreEntry
+                                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                                guard !trimmed.isEmpty else { return }
+                                var s = manager.settings
+                                s.ignoredBundleIDs.insert(trimmed)
+                                manager.updateSettings(s)
+                                newIgnoreEntry = ""
+                            }
+                        }
+                    }
+                }
+            }
+
+            Section("Capacity") {
+                HStack {
+                    Text("Max items")
+                    Slider(value: maxItemsBinding, in: 50...1000, step: 50)
+                    Text("\(manager.settings.maxItems)")
+                        .monospacedDigit()
+                        .frame(width: 44, alignment: .trailing)
+                }
+
+                HStack {
+                    Text("Max storage")
+                    Slider(value: maxStorageMBBinding, in: 10...1000, step: 10)
+                    Text("\(manager.settings.maxStorageBytes / 1_000_000) MB")
+                        .monospacedDigit()
+                        .frame(width: 60, alignment: .trailing)
+                }
+            }
+
+            Section("Hotkey") {
+                Text("Press **⌃⌥B** to toggle the bucket panel.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
     }
 }
 

@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Core Services
@@ -28,6 +29,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var panelWindow: SnorOhPanelWindow?
     private let settingsWindow = SettingsWindow()
 
+    // MARK: - Bucket (Epic 01)
+    private var bucketObserver: NSObjectProtocol?
+
     // MARK: - Lifecycle
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -37,6 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         CustomOhhManager.shared.load()
+        BucketManager.shared.load()
         loadSavedPreferences()
         runSetup()
         startHTTPServer()
@@ -48,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupMenuBar()
         createPanel()
         startBubbleObserving()
+        startBucketFeature()
 
         // Transition from initializing → searching after a short delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
@@ -61,20 +67,71 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Welcome bubble after brief delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
             self.bubbleManager.showWelcome()
+
+            // First-launch bucket tip — fires once, then never again.
+            let tipKey = DefaultsKey.bucketTipShown
+            if !UserDefaults.standard.bool(forKey: tipKey) {
+                UserDefaults.standard.set(true, forKey: tipKey)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+                    self.bubbleManager.show("Drop anything onto me to bucket it!", durationMs: 6000)
+                }
+            }
         }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         spriteEngine.stop()
         mcpReactWork?.cancel()
-        for observer in [mcpSayObserver, taskCompletedObserver, mcpReactObserver, trayObserver].compactMap({ $0 }) {
+        for observer in [mcpSayObserver, taskCompletedObserver, mcpReactObserver, trayObserver, bucketObserver].compactMap({ $0 }) {
             NotificationCenter.default.removeObserver(observer)
         }
         if let obs = statusBarObserver { NotificationCenter.default.removeObserver(obs) }
+        ClipboardMonitor.shared.stop()
+        HotkeyRegistrar.shared.unregister()
+
+        // Flush any pending debounced bucket write synchronously (bounded wait)
+        // so a quit mid-debounce doesn't lose the latest mutation.
+        let sema = DispatchSemaphore(value: 0)
+        Task { @MainActor in
+            await BucketManager.shared.flushPendingWrites()
+            sema.signal()
+        }
+        _ = sema.wait(timeout: .now() + .milliseconds(500))
+
         peerDiscovery?.stop()
         watchdog?.stop()
         httpServer?.stop()
         gitPoller?.stop()
+    }
+
+    // MARK: - Bucket Feature (Epic 01)
+
+    private func startBucketFeature() {
+        // Start clipboard monitor (respects BucketSettings.captureClipboard)
+        ClipboardMonitor.shared.start()
+
+        // Global hotkey toggles panel + focuses Bucket tab
+        let binding = BucketManager.shared.settings.hotkey
+        HotkeyRegistrar.shared.registerBucketToggle(binding: binding) { [weak self] in
+            self?.toggleBucketPanel()
+        }
+
+        // Status bar reflects bucket count too
+        bucketObserver = NotificationCenter.default.addObserver(
+            forName: .bucketChanged, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.updateStatusBarText()
+        }
+    }
+
+    /// Global-hotkey action: shows the panel (if hidden) and flips its tab to Bucket.
+    private func toggleBucketPanel() {
+        UserDefaults.standard.set("bucket", forKey: DefaultsKey.bucketActiveTab)
+        if panelWindow?.isVisible == true {
+            panelWindow?.orderOut(nil)
+        } else {
+            panelWindow?.orderFront(nil)
+        }
     }
 
     // MARK: - HTTP Server
@@ -137,8 +194,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func updateStatusBarText() {
         guard let button = statusItem?.button else { return }
         let projects = sessionManager.projects
+        let bucketCount = BucketManager.shared.activeBucket.items.count
 
-        if projects.isEmpty {
+        if projects.isEmpty && bucketCount == 0 {
             button.attributedTitle = NSAttributedString()
             return
         }
@@ -155,7 +213,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         counts = sorted.map { ($0.key, $0.value) }
 
-        // Build attributed string: " ● 2 ● 1 ● 1"
+        // Build attributed string: " ● 2 ● 1 ● 1   📦 3"
         let result = NSMutableAttributedString()
         let space = NSAttributedString(string: " ")
 
@@ -181,6 +239,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 ]
             )
             result.append(countStr)
+        }
+
+        if bucketCount > 0 {
+            if !counts.isEmpty {
+                result.append(NSAttributedString(string: "  "))
+            } else {
+                result.append(space)
+            }
+            let bucketDot = NSAttributedString(
+                string: "\u{25CF}",
+                attributes: [
+                    .foregroundColor: NSColor.systemOrange,
+                    .font: NSFont.systemFont(ofSize: 7, weight: .bold),
+                    .baselineOffset: 1.0,
+                ]
+            )
+            result.append(bucketDot)
+            result.append(NSAttributedString(
+                string: "\(bucketCount)",
+                attributes: [
+                    .foregroundColor: NSColor.secondaryLabelColor,
+                    .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .medium),
+                ]
+            ))
         }
 
         button.attributedTitle = result
