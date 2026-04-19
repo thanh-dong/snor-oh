@@ -11,7 +11,7 @@ final class SnorOhPanelWindow: NSPanel {
     private var lastKnownSizeRaw: String
     private var lastKnownScale: Double
 
-    init(sessionManager: SessionManager, spriteEngine: SpriteEngine, bubbleManager: BubbleManager) {
+    init(sessionManager: SessionManager, spriteEngine: SpriteEngine, bubbleManager: BubbleManager, visitManager: VisitManager?) {
         self.sessionManager = sessionManager
 
         let defaults = UserDefaults.standard
@@ -39,7 +39,8 @@ final class SnorOhPanelWindow: NSPanel {
         let panelView = SnorOhPanelView(
             sessionManager: sessionManager,
             spriteEngine: spriteEngine,
-            bubbleManager: bubbleManager
+            bubbleManager: bubbleManager,
+            visitManager: visitManager
         )
         let hostingView = NSHostingView(rootView: panelView)
         hostingView.sizingOptions = [.minSize, .intrinsicContentSize]

@@ -343,7 +343,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panelWindow = SnorOhPanelWindow(
             sessionManager: sessionManager,
             spriteEngine: spriteEngine,
-            bubbleManager: bubbleManager
+            bubbleManager: bubbleManager,
+            visitManager: visitManager
         )
         panelWindow?.orderFront(nil)
     }
