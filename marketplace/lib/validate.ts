@@ -2,7 +2,7 @@ import sharp from "sharp";
 import { STATUSES, type SnorohFile, type SpriteEntry } from "./schema";
 
 export const MAX_FILE_BYTES = 2 * 1024 * 1024; // 2 MiB
-export const MAX_SPRITE_DIM = 1024;
+export const MAX_SPRITE_DIM = 8192; // room for 128px × 64 frames sheets
 
 export interface ValidatedPackage {
   name: string;
