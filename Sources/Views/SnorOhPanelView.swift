@@ -99,7 +99,7 @@ struct SnorOhPanelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Mascot stage
+            // Mascot stage — transparent, floating
             mascotStage
 
             // Speech bubble
@@ -107,27 +107,10 @@ struct SnorOhPanelView: View {
                 speechBubble
             }
 
-            // Summary bar (always visible, acts as collapse toggle)
-            summaryBar
-
-            // Project list (collapsible)
-            if !collapsed && !sessionManager.projects.isEmpty {
-                projectList
-            }
+            // Session area — has its own background
+            sessionArea
         }
         .frame(width: size.panelWidth)
-        .background(
-            VisualEffectBackground(
-                material: isDark ? .hudWindow : .sidebar,
-                blendingMode: .behindWindow
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(isDark ? Color.white.opacity(0.06) : Color.black.opacity(0.08), lineWidth: 0.5)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 14))
         .onAppear {
             spriteEngine.setPet(sessionManager.pet)
             spriteEngine.setStatus(sessionManager.currentUI)
@@ -136,7 +119,7 @@ struct SnorOhPanelView: View {
         .onChange(of: sessionManager.pet) { _, p in spriteEngine.setPet(p) }
     }
 
-    // MARK: - Mascot Stage
+    // MARK: - Mascot Stage (transparent)
 
     private var mascotStage: some View {
         ZStack {
@@ -146,7 +129,7 @@ struct SnorOhPanelView: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: spriteSize + (glowRadius > 0 ? 20 : 8))
-        .padding(.top, 12)
+        .padding(.top, 4)
     }
 
     // MARK: - Speech Bubble
@@ -154,13 +137,49 @@ struct SnorOhPanelView: View {
     private var speechBubble: some View {
         Text(bubbleManager.currentMessage ?? "")
             .font(.system(size: size.metaFont, weight: .medium))
-            .foregroundStyle(isDark ? .white.opacity(0.6) : .black.opacity(0.5))
+            .foregroundStyle(isDark ? .white.opacity(0.7) : .black.opacity(0.6))
             .lineLimit(2)
             .multilineTextAlignment(.center)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 6)
+            .background(
+                Capsule()
+                    .fill(isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.06))
+            )
             .padding(.horizontal, 16)
-            .padding(.vertical, 4)
+            .padding(.bottom, 4)
             .transition(.opacity.combined(with: .scale(scale: 0.95)))
             .animation(.easeOut(duration: 0.2), value: bubbleManager.isVisible)
+    }
+
+    // MARK: - Session Area (with background)
+
+    private var sessionArea: some View {
+        VStack(spacing: 0) {
+            summaryBar
+
+            if !collapsed && !sessionManager.projects.isEmpty {
+                Divider()
+                    .opacity(isDark ? 0.15 : 0.2)
+                    .padding(.horizontal, 10)
+
+                projectList
+            }
+        }
+        .background(
+            VisualEffectBackground(
+                material: isDark ? .hudWindow : .sidebar,
+                blendingMode: .behindWindow
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.1), lineWidth: 0.5)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, 4)
+        .padding(.bottom, 4)
     }
 
     // MARK: - Summary Bar
@@ -186,14 +205,13 @@ struct SnorOhPanelView: View {
                         .font(.system(size: size.metaFont, weight: .medium))
                         .foregroundStyle(isDark ? .white.opacity(0.5) : .black.opacity(0.4))
 
-                    // Status breakdown
                     statusBreakdown(projects)
                 }
 
                 Spacer()
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 6)
+            .padding(.vertical, 8)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -224,7 +242,6 @@ struct SnorOhPanelView: View {
     private func statusCounts(_ projects: [ProjectStatus]) -> [StatusCount] {
         var map: [Status: Int] = [:]
         for p in projects { map[p.status, default: 0] += 1 }
-        // Show non-idle statuses first, then idle
         return map.sorted { a, b in
             if a.key == .idle { return false }
             if b.key == .idle { return true }
@@ -241,32 +258,37 @@ struct SnorOhPanelView: View {
                 projectRow(project)
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.bottom, 10)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 6)
         .transition(.opacity.combined(with: .move(edge: .top)))
     }
 
     private func projectRow(_ project: ProjectStatus) -> some View {
-        HStack(spacing: 6) {
-            Circle()
+        HStack(spacing: 0) {
+            // Status rail — left edge colored bar
+            RoundedRectangle(cornerRadius: 1.5)
                 .fill(colorFor(project.status))
-                .frame(width: size.dotSize, height: size.dotSize)
+                .frame(width: 3)
+                .padding(.vertical, 6)
+                .padding(.leading, 2)
 
-            Text(project.name)
-                .font(.system(size: size.projectFont, weight: .medium))
-                .foregroundStyle(isDark ? .white.opacity(0.85) : .black.opacity(0.8))
-                .lineLimit(1)
+            HStack(spacing: 6) {
+                Text(project.name)
+                    .font(.system(size: size.projectFont, weight: .medium))
+                    .foregroundStyle(isDark ? .white.opacity(0.85) : .black.opacity(0.8))
+                    .lineLimit(1)
 
-            Spacer()
+                Spacer()
 
-            if project.status != .idle {
-                Text(project.status.displayLabel)
-                    .font(.system(size: size.metaFont, weight: .medium))
-                    .foregroundStyle(colorFor(project.status))
+                if project.status != .idle {
+                    Text(project.status.displayLabel)
+                        .font(.system(size: size.metaFont, weight: .medium))
+                        .foregroundStyle(colorFor(project.status).opacity(0.8))
+                }
             }
+            .padding(.leading, 8)
+            .padding(.trailing, 10)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
         .frame(height: size.rowHeight)
         .background(
             RoundedRectangle(cornerRadius: 6)
