@@ -358,36 +358,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let button = statusItem?.button else { return }
 
         popoverDismissWork?.cancel()
+        menuBarPopover?.performClose(nil)
 
-        let popover = menuBarPopover ?? NSPopover()
+        let popover = NSPopover()
         menuBarPopover = popover
 
-        let maxWidth: CGFloat = 260
-        let padding: CGFloat = 16
+        let view = Text(message)
+            .font(.system(size: 12, weight: .medium))
+            .multilineTextAlignment(.center)
+            .lineLimit(5)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: 230)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
 
-        let label = NSTextField(wrappingLabelWithString: message)
-        label.font = .systemFont(ofSize: 12, weight: .medium)
-        label.textColor = .labelColor
-        label.alignment = .center
-        label.maximumNumberOfLines = 5
-        label.preferredMaxLayoutWidth = maxWidth - padding * 2
-        label.translatesAutoresizingMaskIntoConstraints = false
-
-        let container = NSView()
-        container.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(label)
-
-        NSLayoutConstraint.activate([
-            label.topAnchor.constraint(equalTo: container.topAnchor, constant: 10),
-            label.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -10),
-            label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: padding),
-            label.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -padding),
-            container.widthAnchor.constraint(lessThanOrEqualToConstant: maxWidth),
-        ])
-
-        let vc = NSViewController()
-        vc.view = container
-        popover.contentViewController = vc
+        popover.contentViewController = NSHostingController(rootView: view)
         popover.behavior = .applicationDefined
         popover.animates = true
 
