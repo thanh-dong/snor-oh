@@ -140,8 +140,8 @@ final class PeerDiscovery {
         var httpPort: UInt16 = 1234
         var hostname: String?
 
-        if case .bonjour(let txtRecord) = result.metadata {
-            // Build dict from TXT record via subscript (returns String?)
+        switch result.metadata {
+        case .bonjour(let txtRecord):
             var txtDict: [String: String] = [:]
             for entry in txtRecord {
                 if let val = txtRecord[entry.key] {
@@ -153,6 +153,10 @@ final class PeerDiscovery {
             if let p = txtDict["pet"], !p.isEmpty { pet = p }
             if let portStr = txtDict["port"], let p = UInt16(portStr) { httpPort = p }
             if let h = txtDict["hostname"], !h.isEmpty { hostname = h }
+        case .none:
+            print("[discovery] no metadata for \(name)")
+        default:
+            print("[discovery] unknown metadata type for \(name): \(result.metadata)")
         }
 
         // Use advertised hostname (e.g. "MacBook-Pro.local") — mDNS resolves it

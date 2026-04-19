@@ -87,7 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         httpServer = HTTPServer(sessionManager: sessionManager, port: port)
         do {
             try httpServer?.start()
-            print("[snor-oh] HTTP server started on 127.0.0.1:\(port)")
+            print("[snor-oh] HTTP server started on 0.0.0.0:\(port)")
         } catch {
             print("[snor-oh] Failed to start HTTP server: \(error)")
             // Port may be in use — show alert
