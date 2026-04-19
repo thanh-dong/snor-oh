@@ -107,11 +107,6 @@ struct SnorOhPanelView: View {
             }
 
             sessionArea
-
-            // Peers section (only when peers exist)
-            if !sessionManager.peers.isEmpty {
-                peersArea
-            }
         }
         .frame(width: size.panelWidth)
         .onAppear {
@@ -152,6 +147,45 @@ struct SnorOhPanelView: View {
         .frame(maxWidth: .infinity)
         .frame(height: spriteSize + (glowRadius > 0 ? 20 : 8))
         .padding(.top, 4)
+        .contextMenu { mascotContextMenu }
+    }
+
+    @ViewBuilder
+    private var mascotContextMenu: some View {
+        let peers = Array(sessionManager.peers.values)
+        let isVisiting = sessionManager.visiting != nil
+
+        if !peers.isEmpty {
+            Section("Nearby Peers") {
+                ForEach(peers, id: \.instanceName) { peer in
+                    let visiting = sessionManager.visiting == peer.instanceName
+                    Button {
+                        if visiting {
+                            visitManager?.cancelVisit()
+                        } else if !isVisiting {
+                            _ = visitManager?.visit(peerInstanceName: peer.instanceName)
+                        }
+                    } label: {
+                        HStack {
+                            Text(peer.nickname)
+                            if visiting {
+                                Text("(visiting)")
+                            }
+                        }
+                    }
+                    .disabled(isVisiting && !visiting)
+                }
+            }
+
+            if isVisiting {
+                Button("End Visit") {
+                    visitManager?.cancelVisit()
+                }
+            }
+        } else {
+            Text("No peers nearby")
+                .foregroundStyle(.secondary)
+        }
     }
 
     // MARK: - Speech Bubble
@@ -330,94 +364,6 @@ struct SnorOhPanelView: View {
             Button("Copy Path") {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(project.path, forType: .string)
-            }
-        }
-    }
-
-    // MARK: - Peers Area
-
-    private var peersArea: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack(spacing: 6) {
-                Image(systemName: "antenna.radiowaves.left.and.right")
-                    .font(.system(size: 8))
-                    .foregroundStyle(isDark ? .white.opacity(0.3) : .black.opacity(0.25))
-                Text("\(sessionManager.peers.count) nearby")
-                    .font(.system(size: size.metaFont, weight: .medium))
-                    .foregroundStyle(isDark ? .white.opacity(0.4) : .black.opacity(0.35))
-
-                Spacer()
-
-                if sessionManager.visiting != nil {
-                    Text("visiting")
-                        .font(.system(size: size.metaFont - 1, weight: .medium))
-                        .foregroundStyle(.teal.opacity(0.8))
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-
-            // Peer list
-            VStack(spacing: 2) {
-                ForEach(Array(sessionManager.peers.values), id: \.instanceName) { peer in
-                    peerRow(peer)
-                }
-            }
-            .padding(.horizontal, 6)
-            .padding(.bottom, 6)
-        }
-        .background(
-            VisualEffectBackground(
-                material: isDark ? .hudWindow : .sidebar,
-                blendingMode: .behindWindow
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.1), lineWidth: 0.5)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .padding(.horizontal, 4)
-        .padding(.bottom, 4)
-    }
-
-    private func peerRow(_ peer: PeerInfo) -> some View {
-        let isVisiting = sessionManager.visiting == peer.instanceName
-
-        return HStack(spacing: 6) {
-            // Peer sprite thumbnail
-            VisitorSprite(pet: peer.pet)
-                .frame(width: 20, height: 20)
-
-            Text(peer.nickname)
-                .font(.system(size: size.projectFont, weight: .medium))
-                .foregroundStyle(isDark ? .white.opacity(0.75) : .black.opacity(0.7))
-                .lineLimit(1)
-
-            Spacer()
-
-            if isVisiting {
-                Text("visiting")
-                    .font(.system(size: size.metaFont - 1, weight: .medium))
-                    .foregroundStyle(.teal)
-            }
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .frame(height: size.rowHeight)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(isVisiting
-                      ? (isDark ? Color.teal.opacity(0.1) : Color.teal.opacity(0.08))
-                      : (isDark ? Color.white.opacity(0.04) : Color.black.opacity(0.03)))
-        )
-        .onTapGesture {
-            if isVisiting {
-                visitManager?.cancelVisit()
-            } else if sessionManager.visiting == nil {
-                _ = visitManager?.visit(peerInstanceName: peer.instanceName)
             }
         }
     }
