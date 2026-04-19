@@ -17,7 +17,7 @@ xcuserdata/
 # Swift Package Manager
 .build/
 .swiftpm/
-Packages/
+/Packages/
 Package.resolved
 
 # OS
