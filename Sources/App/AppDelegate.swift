@@ -348,11 +348,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panelWindow?.orderFront(nil)
     }
 
+    // MARK: - Menu Bar Popover
+
+    private var menuBarPopover: NSPopover?
+    private var popoverDismissWork: DispatchWorkItem?
+
+    /// Show a temporary speech bubble popover from the menu bar icon.
+    private func showMenuBarBubble(_ message: String, durationSecs: Double = 4.0) {
+        guard let button = statusItem?.button else { return }
+
+        // Cancel any pending dismiss
+        popoverDismissWork?.cancel()
+
+        // Reuse or create popover
+        let popover = menuBarPopover ?? NSPopover()
+        menuBarPopover = popover
+
+        let label = NSTextField(wrappingLabelWithString: message)
+        label.font = .systemFont(ofSize: 12, weight: .medium)
+        label.textColor = .labelColor
+        label.alignment = .center
+        label.maximumNumberOfLines = 2
+
+        let vc = NSViewController()
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 200, height: 40))
+        label.frame = container.bounds.insetBy(dx: 12, dy: 8)
+        label.autoresizingMask = [.width, .height]
+        container.addSubview(label)
+        vc.view = container
+        popover.contentViewController = vc
+        popover.contentSize = NSSize(width: 200, height: 40)
+        popover.behavior = .applicationDefined
+        popover.animates = true
+
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+
+        let work = DispatchWorkItem { [weak self] in
+            self?.menuBarPopover?.performClose(nil)
+        }
+        popoverDismissWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + durationSecs, execute: work)
+    }
+
     // MARK: - Bubble Triggers
 
     /// Listen for MCP say events, task completions, and reactions.
     private func startBubbleObserving() {
-        // MCP say → speech bubble
+        // MCP say → speech bubble (panel + menu bar if panel hidden)
         mcpSayObserver = NotificationCenter.default.addObserver(
             forName: .mcpSay,
             object: nil,
@@ -362,15 +404,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                   let message = notification.userInfo?["message"] as? String else { return }
             let durationMs = notification.userInfo?["duration_ms"] as? UInt64 ?? 7000
             self.bubbleManager.show(message, durationMs: durationMs)
+            if self.panelWindow?.isVisible != true {
+                self.showMenuBarBubble(message, durationSecs: Double(durationMs) / 1000.0)
+            }
         }
 
-        // Task completed → random completion bubble
+        // Task completed → random completion bubble (panel + menu bar if panel hidden)
         taskCompletedObserver = NotificationCenter.default.addObserver(
             forName: .taskCompleted,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             self?.bubbleManager.showTaskCompleted()
+            if self?.panelWindow?.isVisible != true {
+                if let msg = BubbleManager.taskCompletedMessages.randomElement() {
+                    self?.showMenuBarBubble(msg)
+                }
+            }
         }
 
         // MCP react → temporary sprite status override

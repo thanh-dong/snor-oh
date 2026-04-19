@@ -37,7 +37,7 @@ final class BubbleManager {
 
     // MARK: - Bubble Sources
 
-    private static let taskCompletedMessages = [
+    static let taskCompletedMessages = [
         "All done!",
         "Task complete!",
         "Finished!",
