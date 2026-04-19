@@ -154,43 +154,90 @@ struct BucketCardView: View {
     }
 
     // MARK: - Drag-out provider
+    //
+    // Every case below must produce a provider the destination app can
+    // actually consume, so the drag-drop becomes an effective cross-app
+    // "copy + paste":
+    //   - Finder / any file-accepting drop target receives a file URL.
+    //   - Browsers receive a web URL.
+    //   - Text fields (TextEdit, Mail, Slack, etc.) receive plain text —
+    //     even for RTF items, via a secondary plain-text representation.
 
     private func itemProviderForDrag() -> NSItemProvider {
         switch item.kind {
-        case .file, .folder:
-            if let path = item.fileRef?.originalPath, !path.isEmpty {
-                let url = URL(fileURLWithPath: path)
-                return NSItemProvider(object: url as NSURL)
+        case .file, .folder, .image:
+            guard let url = fileURLForDrag() else { return NSItemProvider() }
+            let provider = NSItemProvider(object: url as NSURL)
+            if let name = item.fileRef?.displayName, !name.isEmpty {
+                provider.suggestedName = name
             }
-            return NSItemProvider()
+            return provider
+
         case .url:
-            if let s = item.urlMeta?.urlString, let url = URL(string: s) {
-                return NSItemProvider(object: url as NSURL)
+            guard let s = item.urlMeta?.urlString, let url = URL(string: s) else {
+                return NSItemProvider()
             }
-            return NSItemProvider()
-        case .image:
-            if let rel = item.fileRef?.cachedPath {
-                let abs = storeRootURL.appendingPathComponent(rel)
-                return NSItemProvider(object: abs as NSURL)
+            let provider = NSItemProvider(object: url as NSURL)
+            if let title = item.urlMeta?.title, !title.isEmpty {
+                provider.suggestedName = title
             }
-            return NSItemProvider()
+            return provider
+
         case .text:
             return NSItemProvider(object: (item.text ?? "") as NSString)
+
         case .richText:
-            if let s = item.text, let rtf = Data(base64Encoded: s) {
-                let provider = NSItemProvider()
+            let provider = NSItemProvider()
+            guard let s = item.text, let rtf = Data(base64Encoded: s) else {
+                return NSItemProvider(object: (item.text ?? "") as NSString)
+            }
+            provider.registerDataRepresentation(
+                forTypeIdentifier: UTType.rtf.identifier, visibility: .all
+            ) { completion in
+                completion(rtf, nil)
+                return nil
+            }
+            // Secondary plain-text rep so destinations that don't accept RTF
+            // (URL bars, terminal, IM apps) still get the insertable text.
+            if let attr = try? NSAttributedString(
+                data: rtf,
+                options: [.documentType: NSAttributedString.DocumentType.rtf],
+                documentAttributes: nil
+            ) {
+                let plain = attr.string
                 provider.registerDataRepresentation(
-                    forTypeIdentifier: UTType.rtf.identifier, visibility: .all
+                    forTypeIdentifier: UTType.utf8PlainText.identifier,
+                    visibility: .all
                 ) { completion in
-                    completion(rtf, nil)
+                    completion(Data(plain.utf8), nil)
                     return nil
                 }
-                return provider
             }
-            return NSItemProvider(object: (item.text ?? "") as NSString)
+            return provider
+
         case .color:
             return NSItemProvider(object: (item.colorHex ?? "") as NSString)
         }
+    }
+
+    /// Resolve the best file URL for a drag-out. Prefers the original file
+    /// (so Finder names the copy like the original), falling back to the
+    /// bucket's sidecar so the drag still works after the original is moved
+    /// or deleted — *or* when the item was captured via clipboard and never
+    /// had an `originalPath` in the first place.
+    private func fileURLForDrag() -> URL? {
+        if let original = item.fileRef?.originalPath,
+           !original.isEmpty,
+           FileManager.default.fileExists(atPath: original) {
+            return URL(fileURLWithPath: original)
+        }
+        if let cached = item.fileRef?.cachedPath {
+            let absolute = storeRootURL.appendingPathComponent(cached)
+            if FileManager.default.fileExists(atPath: absolute.path) {
+                return absolute
+            }
+        }
+        return nil
     }
 
     // MARK: - Thumbnail
