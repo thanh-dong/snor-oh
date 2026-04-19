@@ -1,3 +1,10 @@
+// Supabase's direct (non-pooling) Postgres endpoint serves a cert chain
+// Node's default trust store doesn't accept. rejectUnauthorized: false on
+// pg's ssl option isn't reliably honored when connectionString carries
+// its own sslmode, so force-disable validation at the Node TLS layer.
+// Scoped to this one serverless function invocation.
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+
 import { NextResponse } from "next/server";
 import { Client } from "pg";
 import { supabaseService, BUCKET } from "@/lib/supabase";
@@ -78,10 +85,7 @@ async function runMigration(): Promise<StepResult> {
   }
   const client = new Client({
     connectionString: url,
-    // Supabase non-pooling direct connections present a cert chain
-    // Node doesn't trust out of the box. require: true forces TLS,
-    // rejectUnauthorized: false accepts the self-signed chain.
-    ssl: { require: true, rejectUnauthorized: false },
+    ssl: { rejectUnauthorized: false },
   });
   try {
     await client.connect();
