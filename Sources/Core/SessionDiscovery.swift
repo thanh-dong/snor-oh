@@ -101,23 +101,10 @@ struct SessionLiveness: SessionLivenessChecking {
     /// fails or the process is gone. Used by the scan path only; the 2s
     /// Watchdog tick sticks to `kill(0)` for cost reasons (no fork/exec).
     static func processStartedAt(pid: UInt32) -> String? {
-        let task = Process()
-        task.launchPath = "/bin/ps"
-        task.arguments = ["-o", "lstart=", "-p", "\(pid)"]
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = Pipe()
-        do {
-            try task.run()
-        } catch {
-            return nil
-        }
-        task.waitUntilExit()
-        guard task.terminationStatus == 0 else { return nil }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        let raw = String(data: data, encoding: .utf8) ?? ""
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+        ProcessRunner.captureString(
+            launchPath: "/bin/ps",
+            arguments: ["-o", "lstart=", "-p", "\(pid)"]
+        )
     }
 }
 
@@ -171,24 +158,11 @@ struct SessionProcessScanner: SessionProcessScanning {
     func scanInteractiveShells() -> [ShellProcessInfo] {
         // Single ps call with ppid included so we can resolve each shell's
         // parent's comm without a second fork/exec per candidate.
-        let task = Process()
-        task.launchPath = "/bin/ps"
-        task.arguments = ["-axo", "pid=,ppid=,tty=,comm="]
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = Pipe()
-        do {
-            try task.run()
-        } catch {
-            return []
-        }
-        task.waitUntilExit()
-        guard task.terminationStatus == 0 else { return [] }
-
-        let output = String(
-            data: pipe.fileHandleForReading.readDataToEndOfFile(),
-            encoding: .utf8
-        ) ?? ""
+        guard let result = ProcessRunner.runCapture(
+            launchPath: "/bin/ps",
+            arguments: ["-axo", "pid=,ppid=,tty=,comm="]
+        ), result.exitCode == 0 else { return [] }
+        let output = String(data: result.stdout, encoding: .utf8) ?? ""
 
         // Pass 1: parse everything into a table keyed by pid so we can look up
         // each candidate's parent without a second ps call.
@@ -233,24 +207,11 @@ struct SessionProcessScanner: SessionProcessScanning {
     /// one field per line prefixed by a letter — `n<path>` carries the cwd.
     /// ~10-50 ms per pid; called once per shell at app launch only.
     private static func cwd(for pid: UInt32) -> String? {
-        let task = Process()
-        task.launchPath = "/usr/sbin/lsof"
-        task.arguments = ["-a", "-d", "cwd", "-Fn", "-p", "\(pid)"]
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = Pipe()
-        do {
-            try task.run()
-        } catch {
-            return nil
-        }
-        task.waitUntilExit()
-        guard task.terminationStatus == 0 else { return nil }
-
-        let output = String(
-            data: pipe.fileHandleForReading.readDataToEndOfFile(),
-            encoding: .utf8
-        ) ?? ""
+        guard let result = ProcessRunner.runCapture(
+            launchPath: "/usr/sbin/lsof",
+            arguments: ["-a", "-d", "cwd", "-Fn", "-p", "\(pid)"]
+        ), result.exitCode == 0 else { return nil }
+        let output = String(data: result.stdout, encoding: .utf8) ?? ""
         for line in output.split(separator: "\n") where line.hasPrefix("n") {
             let path = String(line.dropFirst())
             return path.isEmpty ? nil : path

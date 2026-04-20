@@ -9,7 +9,7 @@ cd "$PROJECT_DIR"
 
 # --- Configuration ---
 APP_NAME="snor-oh"
-VERSION="0.6.1"
+VERSION="0.6.2"
 EXECUTABLE="SnorOhSwift"
 
 BUILD_DIR="$PROJECT_DIR/.build/release-app"
