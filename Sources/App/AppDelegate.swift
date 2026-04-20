@@ -33,6 +33,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var bucketWindow: BucketWindow?
     private var bucketObserver: NSObjectProtocol?
 
+    // MARK: - Quick paste (⌘⇧V popup)
+    private var quickPastePanel: QuickPastePanel?
+    private var bucketSettingsObserver: NSObjectProtocol?
+    private var lastBucketHotkey: HotkeyBinding?
+    private var lastQuickPasteHotkey: HotkeyBinding?
+
     // MARK: - Lifecycle
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -87,7 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         spriteEngine.stop()
         mcpReactWork?.cancel()
-        for observer in [mcpSayObserver, taskCompletedObserver, mcpReactObserver, trayObserver, bucketObserver].compactMap({ $0 }) {
+        for observer in [mcpSayObserver, taskCompletedObserver, mcpReactObserver, trayObserver, bucketObserver, bucketSettingsObserver].compactMap({ $0 }) {
             NotificationCenter.default.removeObserver(observer)
         }
         if let obs = statusBarObserver { NotificationCenter.default.removeObserver(obs) }
@@ -121,9 +127,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Global hotkey toggles *only* the bucket window. The main snor-oh
         // panel (mascot + sessions) is unaffected.
-        let binding = BucketManager.shared.settings.hotkey
-        HotkeyRegistrar.shared.registerBucketToggle(binding: binding) { [weak self] in
-            self?.bucketWindow?.toggle()
+        registerBucketHotkeys()
+        // Re-register on settings change so the recorder UI takes effect live.
+        bucketSettingsObserver = NotificationCenter.default.addObserver(
+            forName: .bucketChanged, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.registerBucketHotkeys()
         }
 
         // Phase 6: ⌃⌥1…⌃⌥9 switches the active bucket to the Nth visible one.
@@ -148,6 +157,69 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func showBucket() {
         bucketWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    /// Registers (or re-registers) the bucket-toggle and quick-paste hotkeys
+    /// from current settings. Idempotent; the Carbon registrar unregisters
+    /// its prior ref before each call. Diffs against `last*Hotkey` so a
+    /// `.bucketChanged` notification that didn't actually change the binding
+    /// doesn't churn Carbon registrations.
+    private func registerBucketHotkeys() {
+        let settings = BucketManager.shared.settings
+
+        if settings.hotkey != lastBucketHotkey {
+            HotkeyRegistrar.shared.registerBucketToggle(binding: settings.hotkey) { [weak self] in
+                self?.bucketWindow?.toggle()
+            }
+            lastBucketHotkey = settings.hotkey
+        }
+
+        if settings.quickPasteHotkey != lastQuickPasteHotkey {
+            HotkeyRegistrar.shared.registerQuickPaste(binding: settings.quickPasteHotkey) { [weak self] in
+                self?.showQuickPaste()
+            }
+            lastQuickPasteHotkey = settings.quickPasteHotkey
+        }
+    }
+
+    /// Opens the ⌘⇧V quick-paste popup with the N newest items across all
+    /// active buckets. Pattern (Raycast/Alfred-style):
+    ///   1. Record the currently frontmost app — the paste target.
+    ///   2. Activate snor-oh briefly so the panel becomes key and keyboard
+    ///      events route through our local NSEvent monitor.
+    ///   3. On pick: copy to pasteboard → re-activate the recorded app →
+    ///      synth ⌘V (gracefully degrades if Accessibility isn't granted).
+    @MainActor
+    private func showQuickPaste() {
+        let manager = BucketManager.shared
+        let items = manager.latestItemsAcrossActiveBuckets(limit: manager.settings.quickPasteCount)
+
+        // Capture the paste target BEFORE we activate ourselves.
+        let targetApp = NSWorkspace.shared.frontmostApplication
+
+        NSApp.activate(ignoringOtherApps: true)
+
+        let panel = quickPastePanel ?? QuickPastePanel()
+        quickPastePanel = panel
+
+        let sidecarRoot = manager.storeRootURL
+        panel.show(
+            items: items,
+            sidecarRoot: sidecarRoot,
+            onSelect: { idx in
+                guard idx >= 0, idx < items.count else { return }
+                QuickPaster.copyItemToPasteboard(items[idx], sidecarRoot: sidecarRoot)
+                // Hand focus back to the paste target, then synth ⌘V. The
+                // activation is async on macOS so the ⌘V delay in
+                // `synthesizeCommandV` (~60 ms) gives AppKit time to settle.
+                targetApp?.activate(options: [])
+                QuickPaster.synthesizeCommandV()
+            },
+            onCancel: {
+                // Restore focus to where the user was.
+                targetApp?.activate(options: [])
+            }
+        )
     }
 
     // MARK: - HTTP Server
@@ -209,20 +281,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func updateStatusBarText() {
         guard let button = statusItem?.button else { return }
-        let sessions = sessionManager.sessions
+        let projects = sessionManager.projects
         let bucketCount = BucketManager.shared.activeBuckets.reduce(0) { $0 + $1.items.count }
 
-        if sessions.isEmpty && bucketCount == 0 {
+        if projects.isEmpty && bucketCount == 0 {
             button.attributedTitle = NSAttributedString()
             return
         }
 
-        // Count by per-session uiState — two shells in one folder count as 2,
-        // matching the ×N pill on the project row. Projects are a visual
-        // grouping; sessions are the actual unit of "something is running".
+        // Count by per-project aggregate status. Two shells in the same
+        // folder share one project, so the status bar shows "1 busy" not
+        // "2 busy" — matches the panel's project rows as a single source
+        // of truth. Sessions remain the underlying plumbing.
         var counts: [(Status, Int)] = []
         var map: [Status: Int] = [:]
-        for s in sessions.values { map[s.uiState, default: 0] += 1 }
+        for p in projects { map[p.status, default: 0] += 1 }
         // Sort: non-idle first by priority desc, idle last
         let sorted = map.sorted { a, b in
             if a.key == .idle { return false }
@@ -428,7 +501,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let hostingView = NSHostingView(rootView: wizard)
         let win = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 450, height: 350),
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 520),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false

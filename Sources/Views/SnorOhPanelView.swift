@@ -2,6 +2,36 @@ import SwiftUI
 import AppKit
 import Network
 
+// MARK: - Animated "Working..." label
+
+/// Busy-state label that pulses one of three dots at a time. Width stays
+/// stable (all three dots always render — only opacity varies), so the row
+/// layout doesn't jitter while the status flashes.
+struct AnimatedWorkingLabel: View {
+    let font: Font
+    let color: Color
+
+    @State private var activeDot: Int = 0
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Text("Working")
+                .font(font)
+                .foregroundStyle(color)
+            HStack(spacing: 0) {
+                ForEach(0..<3, id: \.self) { i in
+                    Text(".")
+                        .font(font)
+                        .foregroundStyle(color.opacity(activeDot == i ? 1.0 : 0.25))
+                }
+            }
+        }
+        .onReceive(Timer.publish(every: 0.4, on: .main, in: .common).autoconnect()) { _ in
+            activeDot = (activeDot + 1) % 3
+        }
+    }
+}
+
 // MARK: - Panel Size
 
 enum SnorOhSize: String, CaseIterable {
@@ -283,11 +313,11 @@ struct SnorOhPanelView: View {
 
                 let projects = sessionManager.projects
                 if projects.isEmpty {
-                    Text("no sessions")
+                    Text("no projects")
                         .font(.system(size: size.metaFont, weight: .medium))
                         .foregroundStyle(isDark ? .white.opacity(0.3) : .black.opacity(0.25))
                 } else {
-                    Text("\(projects.count) session\(projects.count == 1 ? "" : "s")")
+                    Text("\(projects.count) project\(projects.count == 1 ? "" : "s")")
                         .font(.system(size: size.metaFont, weight: .medium))
                         .foregroundStyle(isDark ? .white.opacity(0.5) : .black.opacity(0.4))
                 }
@@ -367,22 +397,15 @@ struct SnorOhPanelView: View {
 
                 Spacer()
 
-                // Show session-count pill when a single folder hosts multiple
-                // shells/Claude processes — otherwise it collapses to the
-                // original one-row-per-project layout (no visual noise).
-                if project.sessions.count > 1 {
-                    Text("×\(project.sessions.count)")
-                        .font(.system(size: size.metaFont, weight: .semibold))
-                        .foregroundStyle(isDark ? .white.opacity(0.55) : .black.opacity(0.5))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 1)
-                        .background(
-                            Capsule()
-                                .fill(isDark ? Color.white.opacity(0.08) : Color.black.opacity(0.06))
-                        )
-                }
-
-                if project.status != .idle {
+                if project.status == .busy {
+                    // Busy gets an animated "Working..." — three dots pulse
+                    // one-at-a-time so the width stays stable and the state
+                    // visually reads as "in progress" instead of frozen.
+                    AnimatedWorkingLabel(
+                        font: .system(size: size.metaFont, weight: .medium),
+                        color: colorFor(project.status).opacity(0.8)
+                    )
+                } else if project.status != .idle {
                     Text(project.status.displayLabel)
                         .font(.system(size: size.metaFont, weight: .medium))
                         .foregroundStyle(colorFor(project.status).opacity(0.8))

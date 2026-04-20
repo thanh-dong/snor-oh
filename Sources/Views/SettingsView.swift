@@ -90,6 +90,17 @@ struct BucketTab: View {
         )
     }
 
+    private var quickPasteCountBinding: Binding<Double> {
+        Binding(
+            get: { Double(manager.settings.quickPasteCount) },
+            set: { new in
+                var s = manager.settings
+                s.quickPasteCount = min(10, max(3, Int(new)))
+                manager.updateSettings(s)
+            }
+        )
+    }
+
     var body: some View {
         Form {
             Section("Clipboard Capture") {
@@ -154,9 +165,37 @@ struct BucketTab: View {
                 }
             }
 
-            Section("Hotkey") {
-                Text("Press **⌃⌥B** to toggle the bucket panel.")
-                    .font(.system(size: 12))
+            Section("Shortcuts") {
+                ShortcutRecorder(
+                    label: "Toggle bucket panel",
+                    binding: manager.settings.hotkey,
+                    onChange: { new in
+                        var s = manager.settings
+                        s.hotkey = new
+                        manager.updateSettings(s)
+                    },
+                    defaultBinding: HotkeyBinding(key: "B", modifiers: [.command, .shift])
+                )
+                ShortcutRecorder(
+                    label: "Quick paste popup",
+                    binding: manager.settings.quickPasteHotkey,
+                    onChange: { new in
+                        var s = manager.settings
+                        s.quickPasteHotkey = new
+                        manager.updateSettings(s)
+                    },
+                    defaultBinding: HotkeyBinding(key: "V", modifiers: [.command, .shift])
+                )
+
+                HStack {
+                    Text("Quick paste items")
+                    Slider(value: quickPasteCountBinding, in: 3...10, step: 1)
+                    Text("\(manager.settings.quickPasteCount)")
+                        .monospacedDigit()
+                        .frame(width: 24, alignment: .trailing)
+                }
+                Text("Shows the N newest items across all active buckets. ↑↓ or 1–9 to pick, ⏎ to paste, esc to cancel.")
+                    .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
 

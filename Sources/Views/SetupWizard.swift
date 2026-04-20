@@ -70,36 +70,77 @@ struct SetupWizard: View {
                 doneView
             }
         }
-        .frame(width: 400, height: 300)
+        .frame(width: 420, height: 460)
         .padding(24)
     }
 
     // MARK: - Welcome
 
     private var welcomeView: some View {
-        VStack(spacing: 16) {
-            Spacer()
-
+        VStack(spacing: 18) {
             Image(systemName: "pawprint.fill")
-                .font(.system(size: 48))
+                .font(.system(size: 36))
                 .foregroundStyle(.blue)
 
-            Text("Welcome to snor-oh!")
-                .font(.title.bold())
+            VStack(spacing: 4) {
+                Text("Welcome to snor-oh")
+                    .font(.title.bold())
+                Text("A desktop companion for your coding sessions.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
 
-            Text("Your desktop mascot will react to terminal and Claude Code activity. Let's set things up.")
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 300)
+            VStack(alignment: .leading, spacing: 14) {
+                featureRow(
+                    symbol: "pawprint.fill",
+                    title: "A mascot that cares",
+                    detail: "Pixel pet reacts to your terminals, Claude Code, and when tasks finish."
+                )
+                featureRow(
+                    symbol: "rectangle.stack.fill",
+                    title: "Live session panel",
+                    detail: "See every open terminal and Claude session — Working… dots tell you what's busy."
+                )
+                featureRow(
+                    symbol: "tray.full.fill",
+                    title: "Smart clipboard",
+                    detail: "Drag anything onto the mascot. Multi-bucket storage with auto-routing rules."
+                )
+                featureRow(
+                    symbol: "bolt.fill",
+                    title: "Quick paste anywhere",
+                    detail: "⌘⇧V opens recent items — pick one and it pastes straight into your focused app."
+                )
+            }
+            .frame(maxWidth: 340)
 
-            Spacer()
+            Spacer(minLength: 4)
 
             Button("Get Started") {
                 model.runSetup()
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
+        }
+    }
+
+    /// One feature row: symbol column + title / one-line detail. The symbol
+    /// is a fixed-width column so all titles align down the left edge.
+    private func featureRow(symbol: String, title: String, detail: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: symbol)
+                .font(.system(size: 15))
+                .foregroundStyle(.blue)
+                .frame(width: 22, alignment: .center)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                Text(detail)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
         }
     }
 

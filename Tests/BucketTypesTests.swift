@@ -106,7 +106,12 @@ final class BucketTypesTests: XCTestCase {
         XCTAssertEqual(decoded.autoHideSeconds, 2.0)
         XCTAssertEqual(decoded.preferredEdge, .right)
         XCTAssertEqual(decoded.hotkey.key, "B")
-        XCTAssertEqual(decoded.hotkey.modifiers, [.control, .option])
+        // Default bucket-toggle changed to ⌘⇧B in v0.6.0.
+        XCTAssertEqual(decoded.hotkey.modifiers, [.command, .shift])
+        // Quick-paste defaults (Task C).
+        XCTAssertEqual(decoded.quickPasteHotkey.key, "V")
+        XCTAssertEqual(decoded.quickPasteHotkey.modifiers, [.command, .shift])
+        XCTAssertEqual(decoded.quickPasteCount, 5)
     }
 
     func testSettingsRoundTrip() throws {

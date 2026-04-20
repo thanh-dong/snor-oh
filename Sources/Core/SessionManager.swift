@@ -227,7 +227,6 @@ final class SessionManager {
     }
 
     private var lastProjectCount: Int = 0
-    private var lastSessionCount: Int = 0
 
     func emitIfChanged() {
         let newUI = resolveUIState()
@@ -253,19 +252,12 @@ final class SessionManager {
             }
         }
 
-        // Detect project-count changes (new cwd appeared/gone).
+        // Detect project-count changes (new cwd appeared/gone). Session-count
+        // changes that don't move project count (e.g. 2nd shell in an existing
+        // folder) are intentionally NOT re-rendered — projects are the UI unit.
         let projectCount = projects.count
         if projectCount != lastProjectCount {
             lastProjectCount = projectCount
-            changed = true
-        }
-
-        // Detect session-count changes — a 2nd shell opened in an existing
-        // folder doesn't bump `projectCount` but should still re-render the
-        // ×N pill and the status-bar breakdown.
-        let sessionCount = sessions.count
-        if sessionCount != lastSessionCount {
-            lastSessionCount = sessionCount
             changed = true
         }
 

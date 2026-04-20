@@ -16,6 +16,11 @@ final class HotkeyRegistrar {
     private var handler: EventHandlerRef?
     private var callback: (() -> Void)?
 
+    /// Ref + callback for the quick-paste hotkey (id 2). Separate id so the
+    /// event handler's existing demux-by-id pattern extends cleanly.
+    private var quickPasteRef: EventHotKeyRef?
+    private var quickPasteCallback: (() -> Void)?
+
     /// Refs for ⌃⌥1…⌃⌥9 bucket-switcher hotkeys (Phase 6). Index i holds the
     /// ref registered for N = i + 1 (id 1001…1009). Nil slots mean that
     /// particular Carbon registration failed.
@@ -66,6 +71,44 @@ final class HotkeyRegistrar {
             hotKeyRef = nil
         }
         callback = nil
+    }
+
+    /// Re-registers the quick-paste hotkey (id 2). Same idempotent pattern
+    /// as `registerBucketToggle` so settings-driven rebinds "just work".
+    func registerQuickPaste(binding: HotkeyBinding, callback: @escaping () -> Void) {
+        unregisterQuickPaste()
+        guard let keyCode = Self.keyCode(for: binding.key) else {
+            NSLog("[hotkey] quick-paste: unsupported key \(binding.key)")
+            return
+        }
+        let carbonMods = Self.carbonModifiers(from: binding.modifiers)
+
+        installHandlerIfNeeded()
+
+        var ref: EventHotKeyRef?
+        let hotKeyID = EventHotKeyID(signature: Self.signature, id: 2)
+        let status = RegisterEventHotKey(
+            UInt32(keyCode),
+            carbonMods,
+            hotKeyID,
+            GetApplicationEventTarget(),
+            0,
+            &ref
+        )
+        guard status == noErr, let ref else {
+            NSLog("[hotkey] quick-paste RegisterEventHotKey failed: \(status)")
+            return
+        }
+        self.quickPasteRef = ref
+        self.quickPasteCallback = callback
+    }
+
+    func unregisterQuickPaste() {
+        if let ref = quickPasteRef {
+            UnregisterEventHotKey(ref)
+            quickPasteRef = nil
+        }
+        quickPasteCallback = nil
     }
 
     /// Registers ⌃⌥1 through ⌃⌥9 as bucket-switcher hotkeys (Phase 6).
@@ -154,6 +197,8 @@ final class HotkeyRegistrar {
             DispatchQueue.main.async {
                 if rawID == 1 {
                     me.callback?()
+                } else if rawID == 2 {
+                    me.quickPasteCallback?()
                 } else if rawID > HotkeyRegistrar.bucketSwitcherIDBase
                     && rawID <= HotkeyRegistrar.bucketSwitcherIDBase + 9 {
                     let n = Int(rawID - HotkeyRegistrar.bucketSwitcherIDBase)
@@ -200,11 +245,13 @@ final class HotkeyRegistrar {
         "8": kVK_ANSI_8, "9": kVK_ANSI_9,
     ]
 
-    static func keyCode(for key: String) -> Int? {
+    /// Pure static lookup — no main-actor state touched, so safe to expose
+    /// `nonisolated` for the recorder's parse path (runs off-main via NSEvent).
+    nonisolated static func keyCode(for key: String) -> Int? {
         keyCodes[key.uppercased()]
     }
 
-    static func carbonModifiers(from mods: Set<HotkeyBinding.Modifier>) -> UInt32 {
+    nonisolated static func carbonModifiers(from mods: Set<HotkeyBinding.Modifier>) -> UInt32 {
         var out: UInt32 = 0
         if mods.contains(.command) { out |= UInt32(cmdKey) }
         if mods.contains(.option)  { out |= UInt32(optionKey) }

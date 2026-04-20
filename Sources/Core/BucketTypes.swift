@@ -192,6 +192,8 @@ struct BucketSettings: Codable, Sendable {
     var autoHideSeconds: Double
     var preferredEdge: ScreenEdge
     var hotkey: HotkeyBinding
+    var quickPasteHotkey: HotkeyBinding
+    var quickPasteCount: Int
     var autoRouteRules: [AutoRouteRule]
     /// Window alpha for the Bucket panel (0.10…1.0). Wired to
     /// `NSPanel.alphaValue`, so 0.10 makes the whole bucket (including the
@@ -207,7 +209,9 @@ struct BucketSettings: Codable, Sendable {
         ignoredBundleIDs: Set<String> = [],
         autoHideSeconds: Double = 2.0,
         preferredEdge: ScreenEdge = .right,
-        hotkey: HotkeyBinding = HotkeyBinding(key: "B", modifiers: [.control, .option]),
+        hotkey: HotkeyBinding = HotkeyBinding(key: "B", modifiers: [.command, .shift]),
+        quickPasteHotkey: HotkeyBinding = HotkeyBinding(key: "V", modifiers: [.command, .shift]),
+        quickPasteCount: Int = 5,
         autoRouteRules: [AutoRouteRule] = [],
         backgroundOpacity: Double = 0.10
     ) {
@@ -218,6 +222,8 @@ struct BucketSettings: Codable, Sendable {
         self.autoHideSeconds = autoHideSeconds
         self.preferredEdge = preferredEdge
         self.hotkey = hotkey
+        self.quickPasteHotkey = quickPasteHotkey
+        self.quickPasteCount = quickPasteCount
         self.autoRouteRules = autoRouteRules
         self.backgroundOpacity = backgroundOpacity
     }
@@ -232,8 +238,13 @@ struct BucketSettings: Codable, Sendable {
         self.ignoredBundleIDs = try c.decodeIfPresent(Set<String>.self, forKey: .ignoredBundleIDs) ?? []
         self.autoHideSeconds = try c.decodeIfPresent(Double.self, forKey: .autoHideSeconds) ?? 2.0
         self.preferredEdge = try c.decodeIfPresent(ScreenEdge.self, forKey: .preferredEdge) ?? .right
+        // Default bucket-toggle hotkey changed to ⌘⇧B in v0.6.0; users who had
+        // the old ⌃⌥B in their manifest keep it, fresh installs get the new one.
         self.hotkey = try c.decodeIfPresent(HotkeyBinding.self, forKey: .hotkey)
-            ?? HotkeyBinding(key: "B", modifiers: [.control, .option])
+            ?? HotkeyBinding(key: "B", modifiers: [.command, .shift])
+        self.quickPasteHotkey = try c.decodeIfPresent(HotkeyBinding.self, forKey: .quickPasteHotkey)
+            ?? HotkeyBinding(key: "V", modifiers: [.command, .shift])
+        self.quickPasteCount = try c.decodeIfPresent(Int.self, forKey: .quickPasteCount) ?? 5
         self.autoRouteRules = try c.decodeIfPresent([AutoRouteRule].self, forKey: .autoRouteRules) ?? []
         self.backgroundOpacity = try c.decodeIfPresent(Double.self, forKey: .backgroundOpacity) ?? 0.10
     }
