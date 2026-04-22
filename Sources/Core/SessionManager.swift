@@ -131,7 +131,7 @@ final class SessionManager {
                 NotificationCenter.default.post(
                     name: .taskCompleted,
                     object: nil,
-                    userInfo: ["duration_secs": duration]
+                    userInfo: ["duration_secs": duration, "pid": pid]
                 )
             }
             session.busyType = ""
