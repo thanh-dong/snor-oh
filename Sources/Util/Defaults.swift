@@ -48,6 +48,22 @@ enum DefaultsKey {
     /// Background-tint solidity for the Bucket window (0.10…1.0). Mirrors
     /// `BucketSettings.backgroundOpacity` for documentation.
     static let bucketBackgroundOpacity = "bucketBackgroundOpacity"
+    /// Epic 07 follow-up — user's preferred expanded height, remembered
+    /// across auto-collapse / auto-expand cycles. Separate from
+    /// `bucketWindowHeight` (which tracks the *current* frame height, and
+    /// temporarily drops to the collapsed value while hidden).
+    static let bucketExpandedHeight = "bucketExpandedHeight"
+    /// Whether the bucket window auto-collapses on focus loss and auto-expands
+    /// on focus gain. Default: true. When false, the window only changes
+    /// between collapsed and expanded via the manual chevron button in the
+    /// header — its visibility is gated on this setting being off.
+    static let bucketAutoCollapseEnabled = "bucketAutoCollapseEnabled"
+
+    // MARK: - Away Digest feature (A9)
+    /// Whether the away-digest summary is enabled. Default: true.
+    static let awayDigestEnabled = "awayDigestEnabled"
+    /// Minimum idle minutes before an away digest is generated. Default: 10. Valid range: 3…60.
+    static let awayDigestThresholdMins = "awayDigestThresholdMins"
 }
 
 enum DefaultsDefault {

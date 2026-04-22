@@ -52,6 +52,10 @@ struct BucketTabsView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
+        // Empty space around the pill tabs doubles as a window-drag grip.
+        // Pills and the `+` button claim mouseDown via SwiftUI hit-testing,
+        // so only truly empty space falls through to `WindowDragArea`.
+        .background(WindowDragArea())
         .sheet(
             isPresented: Binding(
                 get: { deletingBucketID != nil },

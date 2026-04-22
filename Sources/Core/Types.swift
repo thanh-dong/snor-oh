@@ -11,12 +11,17 @@ enum Status: String, CaseIterable, Sendable {
     case service
     case disconnected
     case visiting
+    case carrying
 
     /// Priority for UI resolution: higher wins.
+    ///
+    /// `.carrying` lives between `.idle` and `.service` so it only surfaces
+    /// when no Claude Code / terminal activity is demanding the sprite. Epic 02.
     var priority: Int {
         switch self {
-        case .busy: return 4
-        case .service: return 3
+        case .busy: return 5
+        case .service: return 4
+        case .carrying: return 3
         case .idle: return 2
         case .visiting: return 1
         case .disconnected, .searching, .initializing: return 0
@@ -32,6 +37,7 @@ enum Status: String, CaseIterable, Sendable {
         case .service: return "Service"
         case .disconnected: return "Sleep"
         case .visiting: return "Visiting"
+        case .carrying: return "Carrying"
         }
     }
 
@@ -43,6 +49,44 @@ enum Status: String, CaseIterable, Sendable {
         case .searching, .initializing: return "yellow"
         case .disconnected: return "gray"
         case .visiting: return "teal"
+        case .carrying: return "orange"
+        }
+    }
+
+    // MARK: - Sprite scope
+
+    /// Statuses that *must* have a dedicated sprite sheet in every pet's asset
+    /// catalog. This is the iteration surface used by import/export, Smart
+    /// Import, and per-pet sprite writers — `Status.allCases` itself stays
+    /// exhaustive (new cases like `.carrying` opt out of requiring art).
+    ///
+    /// Why exclude `.carrying`: it's a runtime-only display promotion (see
+    /// `resolveDisplay`). Legacy `.snoroh` files and `custom-ohhs.json` on
+    /// disk predate it and don't carry a sprite entry for it — forcing one
+    /// would break every existing import and every existing custom ohh.
+    /// `SpriteConfig.sheet(pet:status:)` falls back to the idle sheet when a
+    /// pet lacks a carrying asset, so requiring the key here is unnecessary.
+    static let spriteStatuses: [Status] = [
+        .initializing, .searching, .idle, .busy, .service, .disconnected, .visiting,
+    ]
+
+    // MARK: - Epic 02 display resolver
+
+    /// Resolves the status the mascot should *show* for a given session-derived
+    /// status and current bucket item count. Pure function — no side effects.
+    ///
+    /// Rules:
+    /// - If the bucket is empty, show the session status unchanged.
+    /// - Otherwise, if the session status is "quiet" (idle/disconnected/searching/initializing/visiting),
+    ///   promote the display to `.carrying`.
+    /// - Never override `.busy` or `.service` — Claude Code activity always wins.
+    static func resolveDisplay(sessionStatus: Status, bucketCount: Int) -> Status {
+        guard bucketCount > 0 else { return sessionStatus }
+        switch sessionStatus {
+        case .busy, .service:
+            return sessionStatus
+        case .idle, .disconnected, .searching, .initializing, .visiting, .carrying:
+            return .carrying
         }
     }
 }

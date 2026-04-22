@@ -119,6 +119,10 @@ struct SnorOhPanelView: View {
         }
     }
 
+    private var awayDigest: AwayDigestCollector? {
+        (NSApp.delegate as? AppDelegate)?.awayDigestCollector
+    }
+
     private var spriteSize: CGFloat {
         size.heroSpriteSize * displayScale
     }
@@ -427,6 +431,12 @@ struct SnorOhPanelView: View {
             RoundedRectangle(cornerRadius: 6)
                 .fill(isDark ? Color.white.opacity(0.04) : Color.black.opacity(0.03))
         )
+        .help(
+            tooltipText(
+                snapshot: awayDigest?.snapshot(for: project.path),
+                enabled: awayDigest?.enabled ?? false
+            )
+        )
         .onTapGesture {
             openInVSCode(path: project.path)
         }
@@ -440,6 +450,12 @@ struct SnorOhPanelView: View {
             Button("Copy Path") {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(project.path, forType: .string)
+            }
+            if awayDigest?.snapshot(for: project.path) != nil {
+                Divider()
+                Button("Clear digest") {
+                    awayDigest?.clearDigest(for: project.path)
+                }
             }
         }
     }
@@ -455,6 +471,7 @@ struct SnorOhPanelView: View {
                             return Color(red: 1.0, green: 0.85, blue: 0.24)
         case .disconnected: return Color(red: 0.39, green: 0.39, blue: 0.4)
         case .visiting:     return .teal
+        case .carrying:     return .orange
         }
     }
 

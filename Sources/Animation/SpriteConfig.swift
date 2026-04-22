@@ -31,6 +31,7 @@ enum SpriteConfig {
             case .searching:     return .init(filename: "Walk-Anim",   frames: 4,  frameWidth: 32, frameHeight: 48, row: 0, subdirectory: "sprite")
             case .initializing:  return .init(filename: "Idle-Anim",   frames: 6,  frameWidth: 32, frameHeight: 64, row: 0, subdirectory: "sprite")
             case .visiting:      return .init(filename: "Swing-Anim",  frames: 9,  frameWidth: 72, frameHeight: 80, row: 0, subdirectory: "sprite")
+            case .carrying:      return .init(filename: "Idle-Anim",   frames: 6,  frameWidth: 32, frameHeight: 64, row: 0, subdirectory: "sprite")
             }
         case "samurai":
             switch status {
@@ -41,6 +42,7 @@ enum SpriteConfig {
             case .searching:     return .init(filename: "SamuraiIdle",    frames: 8,  frameWidth: 128, frameHeight: 84, row: 0, subdirectory: nil)
             case .initializing:  return .init(filename: "SamuraiIdle",    frames: 8,  frameWidth: 128, frameHeight: 84, row: 0, subdirectory: nil)
             case .visiting:      return .init(filename: "SamuraiSitting", frames: 6,  frameWidth: 128, frameHeight: 84, row: 0, subdirectory: nil)
+            case .carrying:      return .init(filename: "SamuraiSitting", frames: 6,  frameWidth: 128, frameHeight: 84, row: 0, subdirectory: nil)
             }
         case "hancock":
             switch status {
@@ -51,12 +53,19 @@ enum SpriteConfig {
             case .searching:     return .init(filename: "HancockIdle",    frames: 17, frameWidth: 128, frameHeight: 83, row: 0, subdirectory: nil)
             case .initializing:  return .init(filename: "HancockIdle",    frames: 17, frameWidth: 128, frameHeight: 83, row: 0, subdirectory: nil)
             case .visiting:      return .init(filename: "HancockSitting", frames: 10, frameWidth: 128, frameHeight: 83, row: 0, subdirectory: nil)
+            case .carrying:      return .init(filename: "HancockSitting", frames: 10, frameWidth: 128, frameHeight: 83, row: 0, subdirectory: nil)
             }
         default:
             // Custom pets: look up from CustomOhhManager
-            if let ohh = CustomOhhManager.shared.ohh(withID: pet),
-               let entry = ohh.sprite(for: status) {
-                return .square(entry.fileName, entry.frames, 128)
+            if let ohh = CustomOhhManager.shared.ohh(withID: pet) {
+                if let entry = ohh.sprite(for: status) {
+                    return .square(entry.fileName, entry.frames, 128)
+                }
+                // Epic 02: .carrying reuses the custom pet's idle sheet when
+                // the user hasn't supplied a dedicated carrying pose.
+                if status == .carrying, let idleEntry = ohh.sprite(for: .idle) {
+                    return .square(idleEntry.fileName, idleEntry.frames, 128)
+                }
             }
             return .square("unknown", 1, 128)
         }

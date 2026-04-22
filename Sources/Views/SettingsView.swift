@@ -42,6 +42,27 @@ struct BucketTab: View {
     /// All sliders/toggles bind directly to `manager.settings` via these
     /// computed bindings so the UI stays in sync with any external mutation
     /// (e.g. programmatic `updateSettings`, cross-window changes, disk reload).
+    /// Epic 07 — switching to `.eager` kicks off a background sweep of
+    /// currently un-indexed images so the user sees search results light up
+    /// without having to hit the search box first.
+    private var ocrModeBinding: Binding<OCRIndexingMode> {
+        Binding(
+            get: { manager.settings.ocrIndexingMode },
+            set: { new in
+                var s = manager.settings
+                s.ocrIndexingMode = new
+                manager.updateSettings(s)
+                if new == .eager {
+                    let items = manager.unindexedImageItems()
+                    let root = manager.storeRootURL
+                    Task.detached(priority: .utility) {
+                        await OCRIndex.shared.ensureIndexed(items: items, storeRootURL: root)
+                    }
+                }
+            }
+        )
+    }
+
     private var captureClipboardBinding: Binding<Bool> {
         Binding(
             get: { manager.settings.captureClipboard },
@@ -97,6 +118,22 @@ struct BucketTab: View {
                 var s = manager.settings
                 s.quickPasteCount = min(10, max(3, Int(new)))
                 manager.updateSettings(s)
+            }
+        )
+    }
+
+    /// Window-chrome preference — `BucketWindow` reads the same UserDefaults
+    /// key directly in `becomeKey`/`resignKey` rather than plumbing it through
+    /// `BucketSettings`, so this binding is a plain UserDefaults accessor.
+    private var autoCollapseBinding: Binding<Bool> {
+        Binding(
+            get: {
+                UserDefaults.standard.object(
+                    forKey: DefaultsKey.bucketAutoCollapseEnabled
+                ) as? Bool ?? true
+            },
+            set: { new in
+                UserDefaults.standard.set(new, forKey: DefaultsKey.bucketAutoCollapseEnabled)
             }
         )
     }
@@ -165,6 +202,20 @@ struct BucketTab: View {
                 }
             }
 
+            // Epic 07 — OCR index policy.
+            Section("Search Indexing") {
+                Picker("Index screenshots for search", selection: ocrModeBinding) {
+                    Text("Lazy (on first search)").tag(OCRIndexingMode.lazy)
+                    Text("Eager (as they arrive)").tag(OCRIndexingMode.eager)
+                    Text("Manual (only when I click Extract text)").tag(OCRIndexingMode.manual)
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+                Text("Uses on-device Vision OCR. Nothing leaves your Mac.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Shortcuts") {
                 ShortcutRecorder(
                     label: "Toggle bucket panel",
@@ -212,6 +263,16 @@ struct BucketTab: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("Behavior") {
+                Toggle(
+                    "Auto-collapse when focus moves away",
+                    isOn: autoCollapseBinding
+                )
+                Text("When off, the bucket stays in whichever state you leave it. A chevron appears in the header so you can collapse or expand it on demand.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+
             BucketsManagementSection(manager: manager)
 
             AutoRouteRulesSection(manager: manager)
@@ -234,6 +295,8 @@ struct GeneralTab: View {
     @AppStorage(DefaultsKey.peerDiscoveryEnabled) private var peerDiscoveryEnabled = true
     @AppStorage(DefaultsKey.marketplaceURL) private var marketplaceURL = DefaultsDefault.marketplaceURL
     @AppStorage(DefaultsKey.creatorName) private var creatorName = ""
+    @AppStorage(DefaultsKey.awayDigestEnabled) private var awayDigestEnabled: Bool = true
+    @AppStorage(DefaultsKey.awayDigestThresholdMins) private var awayDigestThresholdMins: Int = 10
     @State private var autoStartEnabled = false
     @State private var autoStartError: String?
     @State private var shellHookConfigured = false
@@ -289,6 +352,29 @@ struct GeneralTab: View {
 
                 Toggle("Peer Discovery", isOn: $peerDiscoveryEnabled)
                     .help("Advertise on the local network and discover other snor-oh instances for visiting.")
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Toggle("Away digest", isOn: $awayDigestEnabled)
+                    Text("Summarize what happened in each project while you were away. Hover a project row to read the digest; a bubble appears when you return.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    if awayDigestEnabled {
+                        HStack {
+                            Text("Idle threshold")
+                            Slider(value: Binding(
+                                get: { Double(awayDigestThresholdMins) },
+                                set: { awayDigestThresholdMins = Int($0) }
+                            ), in: 3...60, step: 1)
+                            Text("\(awayDigestThresholdMins) min")
+                                .monospacedDigit()
+                                .frame(width: 56, alignment: .trailing)
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
             }
 
             Section("Marketplace") {
@@ -363,6 +449,16 @@ struct GeneralTab: View {
         .onAppear {
             autoStartEnabled = SMAppService.mainApp.status == .enabled
             refreshMCPStatus()
+        }
+        .onChange(of: awayDigestEnabled) { _, new in
+            (NSApp.delegate as? AppDelegate)?.applyAwayDigestSettings(
+                enabled: new, thresholdMins: awayDigestThresholdMins
+            )
+        }
+        .onChange(of: awayDigestThresholdMins) { _, new in
+            (NSApp.delegate as? AppDelegate)?.applyAwayDigestSettings(
+                enabled: awayDigestEnabled, thresholdMins: new
+            )
         }
         .alert("Auto-Start Failed", isPresented: .init(
             get: { autoStartError != nil },

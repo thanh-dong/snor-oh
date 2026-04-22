@@ -59,6 +59,14 @@ final class GitStatusPoller {
 
     private func applyCount(_ count: Int, forPath path: String) {
         if lastCounts[path] == count { return }
+        let prev = lastCounts[path] ?? count  // seed to count on first observation → delta 0
+        if count != prev {
+            NotificationCenter.default.post(
+                name: .projectFileDelta,
+                object: nil,
+                userInfo: ["path": path, "delta": count - prev]
+            )
+        }
         lastCounts[path] = count
         sessionManager.updateModifiedFiles(forPath: path, count: count)
     }

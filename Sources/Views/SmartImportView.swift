@@ -196,7 +196,7 @@ struct SmartImportSheet: View {
             Text("Assign Frames to Status")
                 .font(.subheadline.weight(.medium))
 
-            ForEach(Status.allCases, id: \.self) { status in
+            ForEach(Status.spriteStatuses, id: \.self) { status in
                 statusRow(status)
             }
 
@@ -339,7 +339,7 @@ struct SmartImportSheet: View {
 
     private var canSave: Bool {
         !ohhName.isEmpty && !detectedFrames.isEmpty && !saving
-            && Status.allCases.allSatisfy { !parsedIndices(for: $0).isEmpty }
+            && Status.spriteStatuses.allSatisfy { !parsedIndices(for: $0).isEmpty }
     }
 
     private func binding(for status: Status) -> Binding<String> {
@@ -425,7 +425,7 @@ struct SmartImportSheet: View {
     /// original frames remain assigned, with dropped frames removed.
     private func applyRemap(_ oldToNew: [Int?]) {
         var newInputs: [Status: String] = [:]
-        for status in Status.allCases {
+        for status in Status.spriteStatuses {
             let oldIdx = parsedIndicesRaw(for: status, maxFrames: oldToNew.count)
             let newIdx = oldIdx.compactMap { i -> Int? in
                 guard i < oldToNew.count else { return nil }
@@ -505,8 +505,9 @@ struct SmartImportSheet: View {
                 return scaleThumbnail(cropped, size: 48)
             }
 
-            // Auto-distribute frames evenly across statuses
-            let allStatuses = Status.allCases
+            // Auto-distribute frames evenly across sprite-bearing statuses.
+            // `.carrying` opts out — it reuses the idle sheet at render time.
+            let allStatuses = Status.spriteStatuses
             let total = result.frames.count
             var inputs: [Status: String] = [:]
             let perStatus = max(1, total / allStatuses.count)
@@ -564,7 +565,7 @@ struct SmartImportSheet: View {
         DispatchQueue.global(qos: .userInitiated).async {
             var blobs: [Status: (data: Data, frames: Int)] = [:]
 
-            for status in Status.allCases {
+            for status in Status.spriteStatuses {
                 let indices = parsedIndices(for: status)
                 guard !indices.isEmpty else {
                     DispatchQueue.main.async {

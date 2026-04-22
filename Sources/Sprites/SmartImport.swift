@@ -17,7 +17,9 @@ enum SmartImport {
 
     static let frameSize = 128
     static let maxSheetWidth = 4096
-    static let bgTolerance: Double = 30.0
+    static let bgInnerTolerance: Double = 25.0     // ≤ this distance → fully transparent (bg removal)
+    static let bgOuterTolerance: Double = 90.0     // ≥ this distance → fully opaque (bg removal)
+    static let bgClusterTolerance: Double = 30.0   // corner-clustering in detectBgColor
     static let alphaThreshold: UInt8 = 10
     static let minGap = 5
     static let minRegionWidth = 10
@@ -104,7 +106,7 @@ enum SmartImport {
         var bestColor = corners[0]
         var bestCount = 0
         for candidate in corners {
-            let count = corners.filter { colorDistance($0, candidate) <= bgTolerance }.count
+            let count = corners.filter { colorDistance($0, candidate) <= bgClusterTolerance }.count
             if count > bestCount {
                 bestCount = count
                 bestColor = candidate
@@ -134,17 +136,56 @@ enum SmartImport {
 
         let detected = bgColor ?? detectBgColor(pixels: pixels, width: w, height: h, bytesPerRow: bytesPerRow)
 
+        let inner = bgInnerTolerance
+        let outer = bgOuterTolerance
+        let bandWidth = outer - inner
+
         for y in 0..<h {
             for x in 0..<w {
                 let offset = y * bytesPerRow + x * 4
-                let px = BgColor(r: pixels[offset], g: pixels[offset + 1], b: pixels[offset + 2])
-                if colorDistance(px, detected) <= bgTolerance {
-                    // Set all 4 bytes to 0 (fully transparent black in premultiplied format)
-                    pixels[offset] = 0
+                let r = pixels[offset]
+                let g = pixels[offset + 1]
+                let b = pixels[offset + 2]
+                let px = BgColor(r: r, g: g, b: b)
+                let d = colorDistance(px, detected)
+
+                if d <= inner {
+                    pixels[offset]     = 0
                     pixels[offset + 1] = 0
                     pixels[offset + 2] = 0
                     pixels[offset + 3] = 0
+                    continue
                 }
+
+                if d >= outer {
+                    // Fully sprite — leave pixel as-is. Source is opaque
+                    // after ctx.draw onto a fresh RGBA context.
+                    continue
+                }
+
+                // Transition band: scale alpha linearly with distance past
+                // inner, then back out the bg contribution from the observed
+                // color (standard keying "spill removal").
+                let t = (d - inner) / bandWidth                  // 0..1
+                let a = UInt8(max(0.0, min(255.0, (t * 255.0).rounded())))
+                let alphaF = Double(a) / 255.0
+
+                // observed = alphaF * fg + (1 - alphaF) * bg
+                //   =>  fg = (observed - (1 - alphaF) * bg) / alphaF
+                let invA = 1.0 - alphaF
+                let fgR = (Double(r) - invA * Double(detected.r)) / alphaF
+                let fgG = (Double(g) - invA * Double(detected.g)) / alphaF
+                let fgB = (Double(b) - invA * Double(detected.b)) / alphaF
+
+                let clampedR = max(0.0, min(255.0, fgR))
+                let clampedG = max(0.0, min(255.0, fgG))
+                let clampedB = max(0.0, min(255.0, fgB))
+
+                // Context is premultipliedLast — write premultiplied channels.
+                pixels[offset]     = UInt8((clampedR * alphaF).rounded())
+                pixels[offset + 1] = UInt8((clampedG * alphaF).rounded())
+                pixels[offset + 2] = UInt8((clampedB * alphaF).rounded())
+                pixels[offset + 3] = a
             }
         }
 
@@ -385,7 +426,7 @@ enum SmartImport {
             )
             guard let cropped = srcImage.cropping(to: srcRect) else { continue }
 
-            stripCtx.interpolationQuality = .none
+            stripCtx.interpolationQuality = .high
             stripCtx.draw(
                 cropped,
                 in: CGRect(x: cellX + ox, y: drawY, width: scaledW, height: scaledH)

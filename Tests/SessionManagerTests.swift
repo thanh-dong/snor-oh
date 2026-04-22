@@ -38,6 +38,20 @@ final class SessionManagerTests: XCTestCase {
         XCTAssertEqual(sm.currentUI, .service)
     }
 
+    func testTaskCompletedIncludesPid() {
+        let sm = SessionManager()
+        var receivedPid: UInt32? = nil
+        let token = NotificationCenter.default.addObserver(forName: .taskCompleted, object: nil, queue: nil) { note in
+            receivedPid = note.userInfo?["pid"] as? UInt32
+        }
+        defer { NotificationCenter.default.removeObserver(token) }
+
+        sm.handleStatus(pid: 42, state: "busy", type: "task", cwd: "/tmp/x")
+        sm.handleStatus(pid: 42, state: "idle", type: nil, cwd: nil)
+
+        XCTAssertEqual(receivedPid, 42)
+    }
+
     func testResolveUIStatePriority() {
         let sm = SessionManager()
         sm.handleStatus(pid: 1, state: "busy", type: "task", cwd: "/a")

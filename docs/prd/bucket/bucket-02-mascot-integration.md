@@ -134,13 +134,13 @@ struct MascotView: View {
 
 | # | Task | Files | Done |
 |---|------|-------|------|
-| 1 | Add `.carrying` status + priority update | `Core/Types.swift`, `Core/SessionManager.swift` | ☐ |
-| 2 | `BucketBadgeView` SwiftUI overlay | `Views/BucketBadgeView.swift` | ☐ |
-| 3 | `.bucketChanged` observer on `MascotView` + invoke catch reaction | `Views/MascotView.swift` | ☐ |
-| 4 | "Catch" one-shot sprite frame + tint flash | `Animation/SpriteEngine.swift` | ☐ |
-| 5 | Speech bubble threshold triggers | `Core/BucketManager.swift`, `Views/SpeechBubble.swift` | ☐ |
-| 6 | Manual verification against existing visitor/busy animations (no regressions) | – | ☐ |
-| 7 | Release build verify | – | ☐ |
+| 1 | Add `.carrying` status + priority update | `Core/Types.swift`, `Core/SessionManager.swift` | ✅ |
+| 2 | `BucketBadgeView` SwiftUI overlay | `Views/BucketBadgeView.swift` | ✅ |
+| 3 | `.bucketChanged` observer on `MascotView` + invoke catch reaction | `Views/MascotView.swift` | ✅ |
+| 4 | "Catch" one-shot sprite frame + tint flash | `Animation/SpriteEngine.swift` | ✅ |
+| 5 | Speech bubble threshold triggers | `Core/BucketManager.swift`, `Views/SpeechBubble.swift` | ✅ |
+| 6 | Manual verification against existing visitor/busy animations (no regressions) | – | ✅ |
+| 7 | Release build verify | – | ✅ |
 
 ## Success Metrics
 

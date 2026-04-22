@@ -125,9 +125,12 @@ enum OhhExporter {
             // user still gets an exportable file (just larger).
         }
 
-        // v1 fallback: per-status base64 sprites.
+        // v1 fallback: per-status base64 sprites. Only the sprite-bearing
+        // statuses are serialized — display-only statuses like `.carrying`
+        // are intentionally skipped so `.snoroh` payloads stay forward- and
+        // backward-compatible with older snor-oh builds.
         var spriteEntries: [String: SnorohFile.SpriteData] = [:]
-        for status in Status.allCases {
+        for status in Status.spriteStatuses {
             guard let entry = ohh.sprite(for: status) else {
                 throw ExportError.spriteReadFailed(status: status.rawValue)
             }
@@ -207,7 +210,7 @@ enum OhhExporter {
         }
 
         var blobs: [Status: (data: Data, frames: Int)] = [:]
-        for status in Status.allCases {
+        for status in Status.spriteStatuses {
             guard let entry = sprites[status.rawValue], !entry.data.isEmpty else {
                 throw ImportError.missingSprite(status: status.rawValue)
             }
@@ -256,7 +259,7 @@ enum OhhExporter {
         // strictness (the user would otherwise get an empty animation).
         var blobs: [Status: (data: Data, frames: Int)] = [:]
         var frameInputsByStatus: [Status: String] = [:]
-        for status in Status.allCases {
+        for status in Status.spriteStatuses {
             let input = meta.frameInputs[status.rawValue] ?? ""
             let indices = SmartImport.parseFrameInput(input, maxFrames: allFrames.count)
             guard !indices.isEmpty else {

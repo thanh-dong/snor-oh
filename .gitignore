@@ -34,3 +34,9 @@ Thumbs.db
 # Tooling scratch
 .next/
 .worktrees/
+
+# Oh mascot resources
+.ohh-mascot-resources/
+
+# Planning files
+docs/superpowers/

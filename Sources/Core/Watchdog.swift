@@ -8,6 +8,7 @@ import Foundation
 final class Watchdog {
     private var timer: Timer?
     private let sessionManager: SessionManager
+    var userIdleTracker: UserIdleTracker? = nil
 
     init(sessionManager: SessionManager) {
         self.sessionManager = sessionManager
@@ -17,6 +18,7 @@ final class Watchdog {
         // Use Timer() + add to .common mode (not scheduledTimer which adds to .default,
         // causing double-fire if we then also add to .common)
         let t = Timer(timeInterval: 2.0, repeats: true) { [weak self] _ in
+            self?.userIdleTracker?.poll()
             self?.sessionManager.tick()
         }
         RunLoop.main.add(t, forMode: .common)
