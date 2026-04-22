@@ -41,6 +41,11 @@ final class UserIdleTracker {
     /// Live-toggle gate. When false, `poll()` short-circuits.
     var enabled: Bool = true
 
+    /// Upper bound on the duration reported in `.userReturned` userInfo.
+    /// Longer absences (usually system sleep) are clamped to this value.
+    /// PRD acceptance criterion.
+    var maxReportableAwaySecs: TimeInterval = 2 * 60 * 60   // 2 hours
+
     /// Injectable for tests. Production uses `SystemIdleProvider`.
     var provider: IdleSecondsProvider = SystemIdleProvider()
 
@@ -61,12 +66,18 @@ final class UserIdleTracker {
             }
         case .away(let since):
             if secondsIdle < returnHysteresisSecs {
-                let duration = UInt64(max(0, now.timeIntervalSince(since)))
+                // Clamp at 2h to avoid reporting overnight-sleep durations as
+                // away-time. CGEventSource.secondsSinceLastEventType includes time
+                // during system sleep, so on wake from an 8-hour overnight sleep
+                // we would otherwise report an 8-hour away window. This matches
+                // the PRD acceptance criterion "no spurious multi-hour digest."
+                let rawDuration = now.timeIntervalSince(since)
+                let clamped = UInt64(max(0, min(rawDuration, maxReportableAwaySecs)))
                 state = .present
                 NotificationCenter.default.post(
                     name: .userReturned,
                     object: nil,
-                    userInfo: ["away_duration_secs": duration]
+                    userInfo: ["away_duration_secs": clamped]
                 )
             }
         }

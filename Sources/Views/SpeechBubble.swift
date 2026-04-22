@@ -136,9 +136,19 @@ final class BubbleManager {
 
     @MainActor
     private func handleUserReturned() {
-        let collector = (NSApp.delegate as? AppDelegate)?.awayDigestCollector
-        guard let msg = collector?.welcomeBackSummary() else { return }
-        show(msg, durationMs: 8000)
+        // Observer ordering: BubbleManager subscribes before AwayDigestCollector
+        // (BubbleManager is instantiated at AppDelegate class-level init; the
+        // collector is instantiated inside applicationDidFinishLaunching). Both
+        // use a `Task { @MainActor in ... }` hop, and the one enqueued first runs
+        // first. Without this second hop, we would call `welcomeBackSummary()`
+        // BEFORE the collector has set `windowEnd`, and every digest would read
+        // as empty. The second hop re-enqueues us behind the collector's task,
+        // so by the time we run, `windowEnd` is populated and snapshots work.
+        Task { @MainActor [weak self] in
+            let collector = (NSApp.delegate as? AppDelegate)?.awayDigestCollector
+            guard let msg = collector?.welcomeBackSummary() else { return }
+            self?.show(msg, durationMs: 8000)
+        }
     }
 
     /// Dismiss the current bubble.

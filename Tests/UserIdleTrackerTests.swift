@@ -123,4 +123,25 @@ final class UserIdleTrackerTests: XCTestCase {
         t.poll(); t.poll()
         XCTAssertEqual(ret.count(), 0, "disabled tracker must not post .userReturned")
     }
+
+    func testAwayDurationClampedForSystemSleep() {
+        let t = UserIdleTracker()
+        let mock = MockIdleProvider()
+        mock.script = [600, 8 * 60 * 60, 0]  // present, then "returned from 8h sleep"
+        t.provider = mock
+        t.thresholdSecs = 300
+        t.maxReportableAwaySecs = 2 * 60 * 60  // 2h explicit
+
+        let ret = observe(.userReturned)
+
+        t.poll()  // 600 -> away
+        t.poll()  // 8h -> still away (not below hysteresis)
+        t.poll()  // 0   -> return
+
+        XCTAssertEqual(ret.count(), 1)
+        let dur = ret.latest()?["away_duration_secs"] as? UInt64
+        XCTAssertNotNil(dur)
+        XCTAssertLessThanOrEqual(dur ?? 0, UInt64(2 * 60 * 60),
+            "awayDuration must be clamped at maxReportableAwaySecs")
+    }
 }
