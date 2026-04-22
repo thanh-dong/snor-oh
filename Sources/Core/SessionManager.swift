@@ -26,6 +26,22 @@ extension Notification.Name {
     ///   - `"threshold": Int`
     ///   - `"count": Int`
     static let bucketHeavy = Notification.Name("bucketHeavy")
+
+    /// A9 — posted by UserIdleTracker when user-idle exceeds the configured
+    /// threshold (default 10 min). `userInfo` is empty; the collector records
+    /// its own `awayWindowStart`.
+    static let userAwayStarted = Notification.Name("userAwayStarted")
+
+    /// A9 — posted by UserIdleTracker when any real user input returns after
+    /// a prior `.userAwayStarted`. `userInfo`:
+    ///   - `"away_duration_secs": UInt64`
+    static let userReturned = Notification.Name("userReturned")
+
+    /// A9 — posted by GitStatus when a project's modifiedFiles count changes.
+    /// `userInfo`:
+    ///   - `"path": String`
+    ///   - `"delta": Int`  (signed; can be negative when files revert)
+    static let projectFileDelta = Notification.Name("projectFileDelta")
 }
 
 // MARK: - SessionManager
