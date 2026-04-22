@@ -73,6 +73,7 @@ Ideas that fit the mascot-character conceit — where having a pet that reacts a
 | A6 | **Session transcript bucket** — drop a session ID onto pet → pulls transcript into a note | Leverages `SessionManager` | S |
 | A7 | **PR / commit celebration** — detect `git commit` / `gh pr create` in session, pet throws confetti | Hooks already trigger sprites | S |
 | A8 | **Autonomous-loop babysitter** — while a `/loop` agent runs in the background, pet shows heartbeat + lets you pause/kill from the panel | Fills a real gap in long-running agents | M |
+| A9 | **[Away digest](A9-away-digest.md)** — real user-idle detection → per-project tooltip + one-shot welcome-back bubble summarizing what each session did while you were gone. Uses only own data (no `awaySummaryEnabled` dep) | Multi-session triage in <5s; no terminal-cycling | S |
 
 ### B. Daily-errand helpers (new territory)
 

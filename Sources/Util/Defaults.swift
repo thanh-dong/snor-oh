@@ -48,6 +48,11 @@ enum DefaultsKey {
     /// Background-tint solidity for the Bucket window (0.10…1.0). Mirrors
     /// `BucketSettings.backgroundOpacity` for documentation.
     static let bucketBackgroundOpacity = "bucketBackgroundOpacity"
+    /// Epic 07 follow-up — user's preferred expanded height, remembered
+    /// across auto-collapse / auto-expand cycles. Separate from
+    /// `bucketWindowHeight` (which tracks the *current* frame height, and
+    /// temporarily drops to the collapsed value while hidden).
+    static let bucketExpandedHeight = "bucketExpandedHeight"
 }
 
 enum DefaultsDefault {

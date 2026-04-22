@@ -16,6 +16,12 @@ struct BucketView: View {
     /// the same as before.
     var fillAvailable: Bool = false
 
+    /// Epic 07 follow-up — when true, render only the search toolbar and
+    /// skip the item list entirely. Used by the auto-collapse behaviour
+    /// (see `BucketWindow.setCollapsed`). Search still types, focus still
+    /// works, but the bucket's contents are hidden.
+    var hideContent: Bool = false
+
     @State private var query: String = ""
     @State private var dropTargeted = false
     /// Epic 07 — non-nil when OCRIndex is running a lazy-mode batch after
@@ -34,23 +40,25 @@ struct BucketView: View {
         VStack(spacing: 0) {
             toolbar
 
-            Divider().opacity(0.2)
+            if !hideContent {
+                Divider().opacity(0.2)
 
-            content
-                .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(dropTargeted ? Color.accentColor.opacity(0.12) : .clear)
-                )
-                .animation(.easeOut(duration: 0.15), value: dropTargeted)
-                .onDrop(
-                    of: BucketDropHandler.supportedUTTypes,
-                    isTargeted: $dropTargeted
-                ) { providers in
-                    BucketDropHandler.ingest(providers: providers, source: .panel)
+                content
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(dropTargeted ? Color.accentColor.opacity(0.12) : .clear)
+                    )
+                    .animation(.easeOut(duration: 0.15), value: dropTargeted)
+                    .onDrop(
+                        of: BucketDropHandler.supportedUTTypes,
+                        isTargeted: $dropTargeted
+                    ) { providers in
+                        BucketDropHandler.ingest(providers: providers, source: .panel)
+                    }
+
+                if indexingInFlight {
+                    indexingFooter
                 }
-
-            if indexingInFlight {
-                indexingFooter
             }
         }
         .onChange(of: query) { _, newValue in

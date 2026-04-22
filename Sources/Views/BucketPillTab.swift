@@ -33,6 +33,9 @@ struct BucketPillTab: View {
     @State private var isRenaming: Bool = false
     @State private var editingName: String = ""
     @FocusState private var renameFocused: Bool
+    /// True while another bucket pill is being dragged over this one.
+    /// Drives the left-edge accent bar that signals "drop here to insert".
+    @State private var isDropTarget: Bool = false
 
     var body: some View {
         HStack(spacing: 5) {
@@ -73,6 +76,44 @@ struct BucketPillTab: View {
         .onTapGesture(count: 2) { beginRename() }
         .onTapGesture(count: 1) { if !isRenaming { onTap() } }
         .contextMenu { menuContents }
+        // Drag + drop reorder — SwiftUI differentiates a drag (motion after
+        // pointer-down) from a tap, so `.onTapGesture` above keeps working.
+        // The dragged data is the bucket's UUID as a String, which is the
+        // simplest Transferable type that round-trips cleanly through the
+        // system pasteboard.
+        .draggable(bucket.id.uuidString) {
+            // Preview while dragging — a small pill echo so the user sees
+            // what they're carrying without hiding the row underneath.
+            Text(bucket.name)
+                .font(.system(size: 11, weight: .semibold))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule().fill((Color(hex: bucket.colorHex) ?? .orange).opacity(0.85))
+                )
+                .foregroundStyle(.white)
+        }
+        .dropDestination(for: String.self) { payload, _ in
+            guard let raw = payload.first,
+                  let droppedID = UUID(uuidString: raw),
+                  droppedID != bucket.id
+            else { return false }
+            manager.moveBucket(id: droppedID, before: bucket.id)
+            return true
+        } isTargeted: { hovering in
+            isDropTarget = hovering
+        }
+        .overlay(alignment: .leading) {
+            // Insertion-line hint at the left edge of the target pill,
+            // matching the "drop here to insert before this" semantics of
+            // `moveBucket(id:before:)`.
+            if isDropTarget {
+                Rectangle()
+                    .fill(Color.accentColor)
+                    .frame(width: 2)
+                    .padding(.vertical, 2)
+            }
+        }
     }
 
     private func beginRename() {

@@ -250,6 +250,43 @@ final class BucketManager {
         postChanged(change: .bucketUpdated, source: .panel, itemID: nil, bucketID: id)
     }
 
+    /// Drag-to-reorder entry point for `BucketPillTab`. Moves the source
+    /// bucket to the target's current position; the target (and anything
+    /// between them) shifts out of the way. Archived buckets are preserved
+    /// in place — dragging only ever reorders visible pills.
+    func moveBucket(id sourceID: UUID, before targetID: UUID) {
+        guard let reordered = Self.reorderedBuckets(
+            buckets, moving: sourceID, before: targetID
+        ) else { return }
+        buckets = reordered
+        rebuildBucketIndex()
+        schedulePersist()
+        postChanged(change: .bucketUpdated, source: .panel, itemID: nil, bucketID: sourceID)
+    }
+
+    /// Pure helper for `moveBucket(id:before:)`. Returns a new array with
+    /// `sourceID` relocated to the slot currently occupied by `targetID`.
+    /// Returns `nil` when source == target or either ID isn't present.
+    /// Exposed `static nonisolated` for unit tests so the reorder rules
+    /// can be pinned without constructing a manager or hopping to
+    /// @MainActor.
+    nonisolated static func reorderedBuckets(
+        _ buckets: [Bucket],
+        moving sourceID: UUID,
+        before targetID: UUID
+    ) -> [Bucket]? {
+        guard sourceID != targetID else { return nil }
+        guard let sourceIdx = buckets.firstIndex(where: { $0.id == sourceID }),
+              let targetIdx = buckets.firstIndex(where: { $0.id == targetID })
+        else { return nil }
+        var out = buckets
+        let moved = out.remove(at: sourceIdx)
+        // Removing from before the target shifts the target's index down by 1.
+        let insertIdx = sourceIdx < targetIdx ? targetIdx - 1 : targetIdx
+        out.insert(moved, at: insertIdx)
+        return out
+    }
+
     /// Archives a bucket. Refuses if the target is the active bucket OR if it
     /// would leave zero active buckets. Callers must `setActiveBucket(id:)` to
     /// something else first — this is intentional so focus never shifts silently.

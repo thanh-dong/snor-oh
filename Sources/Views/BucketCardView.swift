@@ -621,8 +621,13 @@ struct BucketCardView: View {
     private var thumbnail: some View {
         switch item.kind {
         case .image:
+            // Route through BucketImageCache so repeated renders (tab
+            // switches, search re-filter, Observable state changes) don't
+            // hit the disk on every pass.
             if let rel = item.fileRef?.cachedPath,
-               let nsImage = NSImage(contentsOf: storeRootURL.appendingPathComponent(rel)) {
+               let nsImage = BucketImageCache.shared.image(
+                    for: storeRootURL.appendingPathComponent(rel)
+               ) {
                 Image(nsImage: nsImage).resizable().scaledToFill()
             } else {
                 Image(systemName: "photo").foregroundStyle(.secondary)
@@ -658,14 +663,18 @@ struct BucketCardView: View {
 
     /// Loads the NSImage of this item's source (if this item is derived from
     /// an image that still exists in some bucket). Returns nil in all other
-    /// cases so the caller can fall back to the text glyph.
+    /// cases so the caller can fall back to the text glyph. Always hits the
+    /// cache — derived text cards exist specifically *because* their source
+    /// was already loaded, so the cache is almost always warm.
     private func derivedFromImageThumbnail() -> NSImage? {
         guard let sourceID = item.derivedFromItemID,
               let source = manager.findItem(id: sourceID),
               source.kind == .image,
               let rel = source.fileRef?.cachedPath
         else { return nil }
-        return NSImage(contentsOf: storeRootURL.appendingPathComponent(rel))
+        return BucketImageCache.shared.image(
+            for: storeRootURL.appendingPathComponent(rel)
+        )
     }
 
     @ViewBuilder
