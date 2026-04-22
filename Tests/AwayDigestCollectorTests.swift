@@ -1,6 +1,7 @@
 import XCTest
 @testable import SnorOhSwift
 
+@MainActor
 final class AwayDigestCollectorTests: XCTestCase {
 
     var collector: AwayDigestCollector!
@@ -20,18 +21,20 @@ final class AwayDigestCollectorTests: XCTestCase {
 
     // MARK: - accumulation gating
 
-    func testEventsDuringPresentAreIgnored() {
+    func testEventsDuringPresentAreIgnored() async {
         NotificationCenter.default.post(
             name: .taskCompleted, object: nil,
             userInfo: ["duration_secs": UInt64(120), "pid": UInt32(1)]
         )
+        await Task.yield()
         XCTAssertNil(collector.digest(for: "/tmp/p"))
     }
 
-    func testEventsDuringAwayAccumulate() {
+    func testEventsDuringAwayAccumulate() async {
         sm.handleStatus(pid: 1, state: "busy", type: "task", cwd: "/tmp/project-a")
 
         NotificationCenter.default.post(name: .userAwayStarted, object: nil)
+        await Task.yield()
 
         NotificationCenter.default.post(
             name: .taskCompleted, object: nil,
@@ -41,14 +44,16 @@ final class AwayDigestCollectorTests: XCTestCase {
             name: .taskCompleted, object: nil,
             userInfo: ["duration_secs": UInt64(30), "pid": UInt32(1)]
         )
+        await Task.yield()
 
         let d = collector.digest(for: "/tmp/project-a")
         XCTAssertNotNil(d)
         XCTAssertEqual(d?.events.count, 2)
     }
 
-    func testFileDeltaAccumulates() {
+    func testFileDeltaAccumulates() async {
         NotificationCenter.default.post(name: .userAwayStarted, object: nil)
+        await Task.yield()
 
         NotificationCenter.default.post(
             name: .projectFileDelta, object: nil,
@@ -58,6 +63,7 @@ final class AwayDigestCollectorTests: XCTestCase {
             name: .projectFileDelta, object: nil,
             userInfo: ["path": "/tmp/p", "delta": -1]
         )
+        await Task.yield()
 
         let d = collector.digest(for: "/tmp/p")
         XCTAssertNotNil(d)
@@ -66,18 +72,21 @@ final class AwayDigestCollectorTests: XCTestCase {
 
     // MARK: - snapshot on return
 
-    func testReturnSnapshotsDigests() {
+    func testReturnSnapshotsDigests() async {
         sm.handleStatus(pid: 1, state: "busy", type: "task", cwd: "/tmp/a")
 
         NotificationCenter.default.post(name: .userAwayStarted, object: nil)
+        await Task.yield()
         NotificationCenter.default.post(
             name: .taskCompleted, object: nil,
             userInfo: ["duration_secs": UInt64(90), "pid": UInt32(1)]
         )
+        await Task.yield()
         NotificationCenter.default.post(
             name: .userReturned, object: nil,
             userInfo: ["away_duration_secs": UInt64(1200)]
         )
+        await Task.yield()
 
         let snap = collector.snapshot(for: "/tmp/a")
         XCTAssertNotNil(snap)
@@ -85,18 +94,21 @@ final class AwayDigestCollectorTests: XCTestCase {
         XCTAssertEqual(snap?.totalTaskSecs, 90)
     }
 
-    func testWelcomeBackSummaryNilWhenEmpty() {
+    func testWelcomeBackSummaryNilWhenEmpty() async {
         NotificationCenter.default.post(name: .userAwayStarted, object: nil)
+        await Task.yield()
         NotificationCenter.default.post(
             name: .userReturned, object: nil,
             userInfo: ["away_duration_secs": UInt64(1200)]
         )
+        await Task.yield()
         XCTAssertNil(collector.welcomeBackSummary())
     }
 
-    func testWelcomeBackSummarySingleProject() {
+    func testWelcomeBackSummarySingleProject() async {
         sm.handleStatus(pid: 1, state: "busy", type: "task", cwd: "/tmp/api")
         NotificationCenter.default.post(name: .userAwayStarted, object: nil)
+        await Task.yield()
         NotificationCenter.default.post(
             name: .taskCompleted, object: nil,
             userInfo: ["duration_secs": UInt64(60), "pid": UInt32(1)]
@@ -105,21 +117,24 @@ final class AwayDigestCollectorTests: XCTestCase {
             name: .projectFileDelta, object: nil,
             userInfo: ["path": "/tmp/api", "delta": 2]
         )
+        await Task.yield()
         NotificationCenter.default.post(
             name: .userReturned, object: nil,
             userInfo: ["away_duration_secs": UInt64(1200)]
         )
+        await Task.yield()
 
         let msg = collector.welcomeBackSummary()
         XCTAssertNotNil(msg)
         XCTAssertTrue(msg!.contains("api"))
     }
 
-    func testWelcomeBackSummaryMultiProject() {
+    func testWelcomeBackSummaryMultiProject() async {
         sm.handleStatus(pid: 1, state: "busy", type: "task", cwd: "/tmp/a")
         sm.handleStatus(pid: 2, state: "busy", type: "task", cwd: "/tmp/b")
 
         NotificationCenter.default.post(name: .userAwayStarted, object: nil)
+        await Task.yield()
         NotificationCenter.default.post(
             name: .taskCompleted, object: nil,
             userInfo: ["duration_secs": UInt64(60), "pid": UInt32(1)]
@@ -128,10 +143,12 @@ final class AwayDigestCollectorTests: XCTestCase {
             name: .taskCompleted, object: nil,
             userInfo: ["duration_secs": UInt64(60), "pid": UInt32(2)]
         )
+        await Task.yield()
         NotificationCenter.default.post(
             name: .userReturned, object: nil,
             userInfo: ["away_duration_secs": UInt64(1200)]
         )
+        await Task.yield()
 
         let msg = collector.welcomeBackSummary()
         XCTAssertNotNil(msg)
@@ -141,17 +158,20 @@ final class AwayDigestCollectorTests: XCTestCase {
 
     // MARK: - manual clear
 
-    func testClearDigest() {
+    func testClearDigest() async {
         sm.handleStatus(pid: 1, state: "busy", type: "task", cwd: "/tmp/a")
         NotificationCenter.default.post(name: .userAwayStarted, object: nil)
+        await Task.yield()
         NotificationCenter.default.post(
             name: .taskCompleted, object: nil,
             userInfo: ["duration_secs": UInt64(60), "pid": UInt32(1)]
         )
+        await Task.yield()
         NotificationCenter.default.post(
             name: .userReturned, object: nil,
             userInfo: ["away_duration_secs": UInt64(1200)]
         )
+        await Task.yield()
         XCTAssertNotNil(collector.snapshot(for: "/tmp/a"))
 
         collector.clearDigest(for: "/tmp/a")
@@ -160,24 +180,28 @@ final class AwayDigestCollectorTests: XCTestCase {
 
     // MARK: - gate
 
-    func testDisabledIgnoresEverything() {
+    func testDisabledIgnoresEverything() async {
         collector.enabled = false
         sm.handleStatus(pid: 1, state: "busy", type: "task", cwd: "/tmp/a")
         NotificationCenter.default.post(name: .userAwayStarted, object: nil)
+        await Task.yield()
         NotificationCenter.default.post(
             name: .taskCompleted, object: nil,
             userInfo: ["duration_secs": UInt64(60), "pid": UInt32(1)]
         )
+        await Task.yield()
         XCTAssertNil(collector.digest(for: "/tmp/a"))
     }
 
-    func testToggleOffClearsAccumulation() {
+    func testToggleOffClearsAccumulation() async {
         sm.handleStatus(pid: 1, state: "busy", type: "task", cwd: "/tmp/a")
         NotificationCenter.default.post(name: .userAwayStarted, object: nil)
+        await Task.yield()
         NotificationCenter.default.post(
             name: .taskCompleted, object: nil,
             userInfo: ["duration_secs": UInt64(60), "pid": UInt32(1)]
         )
+        await Task.yield()
         XCTAssertNotNil(collector.digest(for: "/tmp/a"))
 
         collector.enabled = false

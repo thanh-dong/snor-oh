@@ -1,6 +1,6 @@
 import Foundation
 
-@Observable
+@MainActor @Observable
 final class AwayDigestCollector {
 
     // MARK: - Config
@@ -18,7 +18,7 @@ final class AwayDigestCollector {
     private var digests: [String: ProjectDigest] = [:]
     private var isAccumulating: Bool = false
     private var windowEnd: Date? = nil
-    private var observers: [NSObjectProtocol] = []
+    nonisolated(unsafe) private var observers: [NSObjectProtocol] = []
 
     // MARK: - Lifecycle
 
@@ -51,7 +51,10 @@ final class AwayDigestCollector {
         let nonEmpty = digests.values.compactMap { d -> DigestSnapshot? in
             guard let end = windowEnd ?? d.awayWindowEnd else { return nil }
             let s = DigestSnapshot(from: d, windowEnd: end)
-            return s.isEmpty ? nil : s
+            // For the welcome-back bubble, sessionEnded alone is not worth reporting.
+            // The tooltip still shows it via DigestSnapshot; bubble is stricter.
+            guard s.taskCount > 0 || s.filesDelta != 0 else { return nil }
+            return s
         }
         guard !nonEmpty.isEmpty else { return nil }
 
@@ -85,19 +88,16 @@ final class AwayDigestCollector {
     private func subscribe() {
         let nc = NotificationCenter.default
         observers.append(nc.addObserver(forName: .userAwayStarted, object: nil, queue: nil) { [weak self] _ in
-            self?.handleAwayStarted()
+            Task { @MainActor [weak self] in self?.handleAwayStarted() }
         })
         observers.append(nc.addObserver(forName: .userReturned, object: nil, queue: nil) { [weak self] _ in
-            self?.handleReturned()
+            Task { @MainActor [weak self] in self?.handleReturned() }
         })
         observers.append(nc.addObserver(forName: .taskCompleted, object: nil, queue: nil) { [weak self] note in
-            self?.handleTaskCompleted(note)
+            Task { @MainActor [weak self] in self?.handleTaskCompleted(note) }
         })
         observers.append(nc.addObserver(forName: .projectFileDelta, object: nil, queue: nil) { [weak self] note in
-            self?.handleFileDelta(note)
-        })
-        observers.append(nc.addObserver(forName: .statusChanged, object: nil, queue: nil) { [weak self] note in
-            self?.handleStatusChanged(note)
+            Task { @MainActor [weak self] in self?.handleFileDelta(note) }
         })
     }
 
@@ -139,21 +139,6 @@ final class AwayDigestCollector {
             kind: .filesChanged, timestamp: Date(),
             durationSecs: 0, filesDelta: delta
         ))
-    }
-
-    private func handleStatusChanged(_ note: Notification) {
-        guard enabled, isAccumulating else { return }
-        let newRaw = note.userInfo?["status"] as? String
-        let prevRaw = note.userInfo?["previous"] as? String
-        guard newRaw == Status.disconnected.rawValue,
-              prevRaw != Status.disconnected.rawValue,
-              let sm = sessionManager else { return }
-        for path in Set(sm.sessions.values.compactMap(\.cwd)) {
-            record(path: path, event: ProjectEvent(
-                kind: .sessionEnded, timestamp: Date(),
-                durationSecs: 0, filesDelta: 0
-            ))
-        }
     }
 
     // MARK: - Internals

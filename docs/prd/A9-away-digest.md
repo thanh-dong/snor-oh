@@ -179,7 +179,10 @@ final class AwayDigestCollector {
     private var isAccumulating: Bool = false
 
     // Subscribes to: .userAwayStarted, .userReturned, .taskCompleted,
-    //                .statusChanged, .projectFileDelta (new)
+    //                .projectFileDelta (new)
+    // v1: .statusChanged / .sessionEnded NOT recorded. A future iteration will add
+    //     per-pid attribution when .statusChanged userInfo carries the pid.
+    //     DigestSnapshot.sessionsEnded stays in the type system at 0.
     // Exposes:      digest(for:), welcomeBackSummary(), clearDigest(for:)
 }
 ```
