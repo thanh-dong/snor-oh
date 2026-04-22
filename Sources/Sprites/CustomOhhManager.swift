@@ -41,7 +41,7 @@ final class CustomOhhManager {
 
     @discardableResult
     func addOhh(name: String, spriteFiles: [Status: (sourcePath: String, frames: Int)]) -> String? {
-        for status in Status.allCases {
+        for status in Status.spriteStatuses {
             guard spriteFiles[status] != nil else {
                 print("[custom-ohhs] missing sprite for \(status.rawValue)")
                 return nil
@@ -54,7 +54,7 @@ final class CustomOhhManager {
         var written: [URL] = []
         var sprites: [String: CustomOhhData.SpriteEntry] = [:]
 
-        for status in Status.allCases {
+        for status in Status.spriteStatuses {
             let entry = spriteFiles[status]!
             let fileName = "\(id)-\(status.rawValue).png"
             let dest = spritesDir.appendingPathComponent(fileName)
@@ -84,7 +84,7 @@ final class CustomOhhManager {
         spriteBlobs: [Status: (data: Data, frames: Int)],
         smartImportMeta: (sheetData: Data, frameInputs: [Status: String])? = nil
     ) -> String? {
-        for status in Status.allCases {
+        for status in Status.spriteStatuses {
             guard spriteBlobs[status] != nil else {
                 print("[custom-ohhs] missing blob for \(status.rawValue)")
                 return nil
@@ -97,7 +97,7 @@ final class CustomOhhManager {
         var written: [URL] = []
         var sprites: [String: CustomOhhData.SpriteEntry] = [:]
 
-        for status in Status.allCases {
+        for status in Status.spriteStatuses {
             let entry = spriteBlobs[status]!
             let fileName = "\(id)-\(status.rawValue).png"
             let dest = spritesDir.appendingPathComponent(fileName)
@@ -146,7 +146,7 @@ final class CustomOhhManager {
         ensureDirectories()
 
         var sprites: [String: CustomOhhData.SpriteEntry] = [:]
-        for status in Status.allCases {
+        for status in Status.spriteStatuses {
             if let entry = spriteFiles[status] {
                 if let sourcePath = entry.sourcePath {
                     let fileName = "\(id)-\(status.rawValue).png"
@@ -188,7 +188,7 @@ final class CustomOhhManager {
 
         var written: [URL] = []
         var sprites: [String: CustomOhhData.SpriteEntry] = [:]
-        for status in Status.allCases {
+        for status in Status.spriteStatuses {
             guard let entry = spriteBlobs[status] else {
                 print("[custom-ohhs] missing blob for \(status.rawValue)")
                 for url in written { try? FileManager.default.removeItem(at: url) }

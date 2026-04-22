@@ -9,8 +9,25 @@ struct MascotView: View {
     @AppStorage(DefaultsKey.displayScale) private var displayScale = 1.0
     @AppStorage(DefaultsKey.glowMode) private var glowMode = "off"
     @State private var dropTargeted = false
+    @State private var bucketManager = BucketManager.shared
+
+    /// Epic 02 — opacity of the orange "catch" overlay. Animates 0 → 1 → 0
+    /// across ~400 ms when `.bucketChanged` fires with `change == "added"`.
+    /// Tint is intensified when `source == "mascot"` (the drop landed here).
+    @State private var catchFlashOpacity: Double = 0
+    @State private var catchFlashTint: Color = .orange
 
     private var spriteSize: CGFloat { SpriteConfig.frameBasePx * displayScale }
+
+    /// Status the sprite engine should render — promoted to `.carrying` when
+    /// the bucket has items and no Claude Code activity is demanding the
+    /// sprite. Pure function on `Status` — see `Status.resolveDisplay`.
+    private var displayStatus: Status {
+        Status.resolveDisplay(
+            sessionStatus: sessionManager.currentUI,
+            bucketCount: bucketManager.totalActiveItemCount()
+        )
+    }
 
     /// Glow shadow color based on glowMode setting.
     private var glowColor: Color {
@@ -26,7 +43,8 @@ struct MascotView: View {
             // Speech bubble (above sprite)
             SpeechBubble(
                 message: bubbleManager.currentMessage ?? "",
-                isVisible: bubbleManager.isVisible
+                isVisible: bubbleManager.isVisible,
+                onTap: bubbleManager.tapAction
             )
             .animation(.easeOut(duration: 0.2), value: bubbleManager.isVisible)
             .frame(height: 30)
@@ -45,12 +63,31 @@ struct MascotView: View {
                         MascotDropHalo(size: spriteSize)
                     }
                 }
+                // Epic 02: orange "catch" flash when a new bucket item arrives.
+                // Non-interactive, disappears on its own.
+                .overlay {
+                    Circle()
+                        .fill(catchFlashTint)
+                        .frame(width: spriteSize * 0.95, height: spriteSize * 0.95)
+                        .blendMode(.plusLighter)
+                        .opacity(catchFlashOpacity)
+                        .allowsHitTesting(false)
+                }
+                // Epic 02: inventory badge (top-right).
+                .overlay(alignment: .topTrailing) {
+                    BucketBadgeView(scale: displayScale)
+                        .offset(x: spriteSize * 0.12, y: -spriteSize * 0.08)
+                        .allowsHitTesting(false)
+                }
                 .animation(.easeOut(duration: 0.18), value: dropTargeted)
                 .onDrop(
                     of: BucketDropHandler.supportedUTTypes,
                     isTargeted: $dropTargeted
                 ) { providers in
                     BucketDropHandler.ingest(providers: providers, source: .mascot)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .bucketChanged)) { note in
+                    handleBucketChanged(note)
                 }
 
             // Status pill
@@ -73,13 +110,38 @@ struct MascotView: View {
         )
         .onAppear {
             spriteEngine.setPet(sessionManager.pet)
-            spriteEngine.setStatus(sessionManager.currentUI)
+            spriteEngine.setStatus(displayStatus)
         }
-        .onChange(of: sessionManager.currentUI) { _, newStatus in
+        .onChange(of: displayStatus) { _, newStatus in
             spriteEngine.setStatus(newStatus)
         }
         .onChange(of: sessionManager.pet) { _, newPet in
             spriteEngine.setPet(newPet)
+        }
+    }
+
+    // MARK: - Epic 02 catch reaction
+
+    /// Plays the one-shot catch overlay on every `.bucketChanged` whose
+    /// `change == "added"`. Ignores pins, removals, bucket CRUD, etc. so the
+    /// flash only fires when something *lands* in a bucket.
+    private func handleBucketChanged(_ note: Notification) {
+        guard let changeRaw = note.userInfo?["change"] as? String,
+              changeRaw == BucketChangeKind.added.rawValue else { return }
+        let source = note.userInfo?["source"] as? String
+        let fromMascot = source == BucketChangeSource.mascot.rawValue
+        // Mascot-origin drops get a brighter, slightly warmer tint so the
+        // hero interaction feels like the pet "grabbed" the item.
+        catchFlashTint = fromMascot ? Color(red: 1.0, green: 0.75, blue: 0.35) : .orange
+        // Ramp in quickly, then fade over ~350 ms — total ~400 ms.
+        catchFlashOpacity = 0
+        withAnimation(.easeOut(duration: 0.08)) {
+            catchFlashOpacity = fromMascot ? 0.55 : 0.35
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+            withAnimation(.easeOut(duration: 0.32)) {
+                catchFlashOpacity = 0
+            }
         }
     }
 

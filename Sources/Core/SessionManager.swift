@@ -20,6 +20,12 @@ extension Notification.Name {
     ///   - `"itemID": UUID?` — nil on bulk changes like `.cleared`
     /// Contract source: docs/prd/bucket/REVIEW.md §6.
     static let bucketChanged = Notification.Name("bucketChanged")
+
+    /// Epic 02 — posted once per session per threshold (20/50/100) when the
+    /// total active-bucket item count crosses. `userInfo`:
+    ///   - `"threshold": Int`
+    ///   - `"count": Int`
+    static let bucketHeavy = Notification.Name("bucketHeavy")
 }
 
 // MARK: - SessionManager

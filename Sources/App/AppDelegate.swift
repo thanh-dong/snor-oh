@@ -33,6 +33,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var bucketWindow: BucketWindow?
     private var bucketObserver: NSObjectProtocol?
 
+    // MARK: - Bucket (Epic 02)
+    private var bucketHeavyObserver: NSObjectProtocol?
+
+    // MARK: - Bucket (Epic 07)
+    private var bucketActionFailedObserver: NSObjectProtocol?
+
     // MARK: - Quick paste (⌘⇧V popup)
     private var quickPastePanel: QuickPastePanel?
     private var bucketSettingsObserver: NSObjectProtocol?
@@ -93,7 +99,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         spriteEngine.stop()
         mcpReactWork?.cancel()
-        for observer in [mcpSayObserver, taskCompletedObserver, mcpReactObserver, trayObserver, bucketObserver, bucketSettingsObserver].compactMap({ $0 }) {
+        for observer in [mcpSayObserver, taskCompletedObserver, mcpReactObserver, trayObserver, bucketObserver, bucketSettingsObserver, bucketHeavyObserver, bucketActionFailedObserver].compactMap({ $0 }) {
             NotificationCenter.default.removeObserver(observer)
         }
         if let obs = statusBarObserver { NotificationCenter.default.removeObserver(obs) }
@@ -152,6 +158,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             forName: .bucketChanged, object: nil, queue: .main
         ) { [weak self] _ in
             self?.updateStatusBarText()
+        }
+
+        // Epic 07 — quick-action failure bubble. Red-tinted, routed the same
+        // way as MCP say messages so menu-bar popover works too.
+        bucketActionFailedObserver = NotificationCenter.default.addObserver(
+            forName: .bucketActionFailed, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let self else { return }
+            let msg = (note.userInfo?["message"] as? String) ?? "Action failed"
+            self.bubbleManager.show("⚠️ \(msg)", durationMs: 5000)
+            if self.panelWindow?.isVisible != true {
+                self.showMenuBarBubble(msg, durationSecs: 5)
+            }
+        }
+
+        // Epic 02: "I'm heavy!" threshold bubble — opens the bucket on tap.
+        bucketHeavyObserver = NotificationCenter.default.addObserver(
+            forName: .bucketHeavy, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let self else { return }
+            let count = (note.userInfo?["count"] as? Int)
+                ?? (note.userInfo?["threshold"] as? Int)
+                ?? 0
+            let message = "I'm carrying \(count) things — tap to help me organize."
+            self.bubbleManager.showActionable(message, durationMs: 8000) { [weak self] in
+                self?.bucketWindow?.makeKeyAndOrderFront(nil)
+            }
+            if self.panelWindow?.isVisible != true {
+                self.showMenuBarBubble(message, durationSecs: 8)
+            }
         }
     }
 
@@ -368,6 +404,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             return NSColor(red: 1.0, green: 0.85, blue: 0.24, alpha: 1)
         case .disconnected: return NSColor(red: 0.39, green: 0.39, blue: 0.4, alpha: 1)
         case .visiting:     return .systemTeal
+        case .carrying:     return .systemOrange
         }
     }
 

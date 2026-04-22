@@ -50,7 +50,10 @@ final class BucketManager {
 
     // MARK: - Private
 
-    private let store: BucketStore
+    /// Epic 07 — exposed to the view layer so quick-actions can pass the
+    /// store into `ActionContext` without routing through BucketManager.
+    /// Still the same instance; actor isolation keeps disk I/O safe.
+    let store: BucketStore
     private var loaded = false
     private var persistDebounce: Task<Void, Never>?
 
@@ -86,6 +89,20 @@ final class BucketManager {
     /// Kept in sync with `bucketIndexByID` via `rebuildBucketIndex()`.
     @ObservationIgnored
     private var defaultBucketIDCached: UUID?
+
+    /// Epic 02 — thresholds (in item-count) that have already fired the
+    /// "I'm heavy!" speech bubble this session. In-memory only; resets each
+    /// launch. Consumed by the heavy-threshold detector in `postChanged`.
+    @ObservationIgnored
+    private var bubbledThresholds: Set<Int> = []
+
+    /// Epic 02 — ordered threshold list for the heavy-bucket bubble.
+    static let heavyThresholds: [Int] = [20, 50, 100]
+
+    /// Epic 07 — item IDs with a quick-action in flight. UI reads this to
+    /// overlay a spinner on the source card. Written only through
+    /// `markProcessing(ids:processing:)` so observers see coherent updates.
+    private(set) var processingItemIDs: Set<UUID> = []
 
     // MARK: - Init
 
@@ -438,6 +455,17 @@ final class BucketManager {
         evictIfNeeded(bucketIdx: idx)
         postChanged(change: .added, source: source, itemID: item.id, bucketID: buckets[idx].id)
         schedulePersist()
+
+        // Epic 07 — eager-mode OCR: kick off indexing for every new image as
+        // it lands. No-op in lazy/manual modes. Derived images (resize etc.)
+        // already have pixel text in `ocrText` only if the source did, so we
+        // re-index them explicitly — small cost, keeps search coverage sane.
+        if item.kind == .image, settings.ocrIndexingMode == .eager {
+            let root = storeRootURL
+            Task.detached(priority: .utility) {
+                await OCRIndex.shared.ensureIndexed(items: [item], storeRootURL: root)
+            }
+        }
     }
 
     /// Entry point for the auto-route engine. Returns the bucketID the item
@@ -702,6 +730,84 @@ final class BucketManager {
         }
     }
 
+    // MARK: - Epic 07 — Quick-action hooks
+
+    /// Writes OCR output back to an existing image item. Called by
+    /// `ExtractTextAction` (manual) and `OCRIndex` (lazy / eager). A nil
+    /// `text` is treated as "ran OCR but found nothing textual" — we still
+    /// stamp `ocrIndexedAt` so the index knows not to retry.
+    func updateOCR(itemID: UUID, text: String?, locale: String?) {
+        for bucketIdx in buckets.indices {
+            if let itemIdx = buckets[bucketIdx].items.firstIndex(where: { $0.id == itemID }) {
+                buckets[bucketIdx].items[itemIdx].ocrText = text
+                buckets[bucketIdx].items[itemIdx].ocrLocale = locale
+                buckets[bucketIdx].items[itemIdx].ocrIndexedAt = Date()
+                schedulePersist()
+                return
+            }
+        }
+    }
+
+    /// Inserts a derived item immediately after its source (not at the head),
+    /// so resize / convert / translate results appear next to the original
+    /// rather than teleporting to the top of a long bucket. Falls back to
+    /// head-insert if the source has been removed in the meantime.
+    func insertDerivedItem(
+        _ item: BucketItem,
+        afterSourceID sourceID: UUID,
+        bucketID: UUID,
+        source: BucketChangeSource = .panel
+    ) {
+        guard let bucketIdx = buckets.firstIndex(where: { $0.id == bucketID }) else { return }
+        var derived = item
+        derived.derivedFromItemID = sourceID
+        if let srcIdx = buckets[bucketIdx].items.firstIndex(where: { $0.id == sourceID }) {
+            buckets[bucketIdx].items.insert(derived, at: srcIdx + 1)
+        } else {
+            buckets[bucketIdx].items.insert(derived, at: 0)
+        }
+        evictIfNeeded(bucketIdx: bucketIdx)
+        postChanged(change: .added, source: source, itemID: derived.id, bucketID: buckets[bucketIdx].id)
+        schedulePersist()
+    }
+
+    /// Test/debug helper: which bucket currently holds this item?
+    func bucketID(forItemID id: UUID) -> UUID? {
+        for b in buckets where b.items.contains(where: { $0.id == id }) {
+            return b.id
+        }
+        return nil
+    }
+
+    /// Look up an item by ID across every bucket. Used by `BucketCardView` to
+    /// resolve a derived item's source (for thumbnail + "from X" label).
+    /// Returns nil if the source has been removed since the derivation.
+    func findItem(id: UUID) -> BucketItem? {
+        for b in buckets {
+            if let item = b.items.first(where: { $0.id == id }) {
+                return item
+            }
+        }
+        return nil
+    }
+
+    /// Returns the current image items without an OCR stamp — consumed by
+    /// `OCRIndex.ensureIndexed`. Static-free so tests can drive it.
+    func unindexedImageItems() -> [BucketItem] {
+        activeBucket.items.filter { $0.kind == .image && $0.ocrIndexedAt == nil }
+    }
+
+    /// Flip the processing flag for a set of items. Called by
+    /// `BucketActionRunner` on both enter and exit so the UI spinner appears
+    /// and vanishes in lockstep.
+    func markProcessing(ids: [UUID], processing: Bool) {
+        if processing {
+            processingItemIDs.formUnion(ids)
+        } else {
+            processingItemIDs.subtract(ids)
+        }
+    }
+
     /// Removes all unpinned items and their sidecars from the active bucket.
     func clearUnpinned(source: BucketChangeSource = .panel) {
         guard let idx = buckets.firstIndex(where: { $0.id == activeBucketID }) else { return }
@@ -714,8 +820,14 @@ final class BucketManager {
     }
 
     /// Fuzzy-ish filter across text, URL string, URL title, file display name,
-    /// and `sourceBundleID`. Case-insensitive, no ranking. Scoped to active
-    /// bucket to match the visible list.
+    /// `sourceBundleID`, and — for `.image` items — OCR'd text when available
+    /// (Epic 07). Case-insensitive, no ranking. Scoped to active bucket to
+    /// match the visible list.
+    ///
+    /// Note: this is the *pure* matcher. It does **not** trigger OCR; the UI
+    /// layer calls `OCRIndex.ensureIndexed(items:)` before invoking `search`
+    /// when `settings.ocrIndexingMode == .lazy`. This keeps the matcher
+    /// synchronous and testable without a Vision dependency.
     func search(_ query: String) -> [BucketItem] {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let source = activeBucket.items
@@ -727,6 +839,9 @@ final class BucketManager {
             if item.urlMeta?.title?.lowercased().contains(needle) == true { return true }
             if item.fileRef?.displayName.lowercased().contains(needle) == true { return true }
             if item.sourceBundleID?.lowercased().contains(needle) == true { return true }
+            // Epic 07: image items are findable by their OCR'd text.
+            if item.kind == .image,
+               item.ocrText?.lowercased().contains(needle) == true { return true }
             return false
         }
     }
@@ -902,6 +1017,54 @@ final class BucketManager {
             object: nil,
             userInfo: info
         )
+
+        // Epic 02: heavy threshold detection — fires *after* the change
+        // notification so observers see the fresh count first.
+        maybePostHeavyThreshold(change: change)
+    }
+
+    /// Posts `.bucketHeavy` once per session per threshold when the active
+    /// bucket's item count crosses 20/50/100. `.cleared` and `.removed` reset
+    /// the already-fired set for any threshold the bucket dropped below, so a
+    /// user who clears and refills their bucket gets re-nudged.
+    private func maybePostHeavyThreshold(change: BucketChangeKind) {
+        let count = totalActiveItemCount()
+        // Reset any thresholds we've dropped below — lets a cleared bucket
+        // warn again when it refills.
+        for t in Self.heavyThresholds where count < t {
+            bubbledThresholds.remove(t)
+        }
+        guard change == .added else { return }
+        guard let crossed = Self.crossedThreshold(count: count, fired: bubbledThresholds) else {
+            return
+        }
+        bubbledThresholds.insert(crossed)
+        NotificationCenter.default.post(
+            name: .bucketHeavy,
+            object: nil,
+            userInfo: ["threshold": crossed, "count": count]
+        )
+    }
+
+    /// Sum of item counts across all non-archived buckets — the "everything
+    /// snor-oh is carrying" number that the badge and heavy bubble quote.
+    func totalActiveItemCount() -> Int {
+        buckets.reduce(0) { acc, b in acc + (b.archived ? 0 : b.items.count) }
+    }
+
+    /// Pure helper — exposed for tests. Returns the highest threshold `count`
+    /// has just reached that hasn't already fired.
+    static func crossedThreshold(count: Int, fired: Set<Int>) -> Int? {
+        heavyThresholds
+            .filter { count >= $0 && !fired.contains($0) }
+            .max()
+    }
+
+    /// Epic 02 — formats the badge label. Returns `nil` when the bucket is
+    /// empty (badge hidden). Counts over 99 show as "99+".
+    static func badgeText(count: Int) -> String? {
+        guard count > 0 else { return nil }
+        return count > 99 ? "99+" : String(count)
     }
 
     // MARK: - Persist debounce

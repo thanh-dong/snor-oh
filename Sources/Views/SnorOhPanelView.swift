@@ -447,6 +447,7 @@ struct SnorOhPanelView: View {
                             return Color(red: 1.0, green: 0.85, blue: 0.24)
         case .disconnected: return Color(red: 0.39, green: 0.39, blue: 0.4)
         case .visiting:     return .teal
+        case .carrying:     return .orange
         }
     }
 

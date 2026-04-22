@@ -42,6 +42,27 @@ struct BucketTab: View {
     /// All sliders/toggles bind directly to `manager.settings` via these
     /// computed bindings so the UI stays in sync with any external mutation
     /// (e.g. programmatic `updateSettings`, cross-window changes, disk reload).
+    /// Epic 07 — switching to `.eager` kicks off a background sweep of
+    /// currently un-indexed images so the user sees search results light up
+    /// without having to hit the search box first.
+    private var ocrModeBinding: Binding<OCRIndexingMode> {
+        Binding(
+            get: { manager.settings.ocrIndexingMode },
+            set: { new in
+                var s = manager.settings
+                s.ocrIndexingMode = new
+                manager.updateSettings(s)
+                if new == .eager {
+                    let items = manager.unindexedImageItems()
+                    let root = manager.storeRootURL
+                    Task.detached(priority: .utility) {
+                        await OCRIndex.shared.ensureIndexed(items: items, storeRootURL: root)
+                    }
+                }
+            }
+        )
+    }
+
     private var captureClipboardBinding: Binding<Bool> {
         Binding(
             get: { manager.settings.captureClipboard },
@@ -163,6 +184,20 @@ struct BucketTab: View {
                         .monospacedDigit()
                         .frame(width: 60, alignment: .trailing)
                 }
+            }
+
+            // Epic 07 — OCR index policy.
+            Section("Search Indexing") {
+                Picker("Index screenshots for search", selection: ocrModeBinding) {
+                    Text("Lazy (on first search)").tag(OCRIndexingMode.lazy)
+                    Text("Eager (as they arrive)").tag(OCRIndexingMode.eager)
+                    Text("Manual (only when I click Extract text)").tag(OCRIndexingMode.manual)
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+                Text("Uses on-device Vision OCR. Nothing leaves your Mac.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
             }
 
             Section("Shortcuts") {

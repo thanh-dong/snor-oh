@@ -44,6 +44,7 @@ struct StatusPill: View {
         case .searching, .initializing: return .yellow
         case .disconnected: return .gray
         case .visiting: return .teal
+        case .carrying: return .orange
         }
     }
 

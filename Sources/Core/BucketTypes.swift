@@ -48,6 +48,40 @@ struct BucketItem: Identifiable, Codable, Sendable, Hashable {
     var urlMeta: URLMetadata?
     var colorHex: String?
 
+    // MARK: - Epic 07 — Quick-action provenance
+
+    /// Set on items produced by a quick action (resize / convert / extract /
+    /// translate / stitch / etc.). Points back to the source item the action
+    /// ran against — one hop only, no grandparent chain.
+    var derivedFromItemID: UUID?
+
+    /// Human-readable action-id + params, e.g. `"resize:50"`, `"extractText"`,
+    /// `"translate:ja→en"`, `"stitch"`. Kept as a string so new actions don't
+    /// need a schema bump.
+    var derivedAction: String?
+
+    // MARK: - Epic 07 — OCR index
+
+    /// OCR'd plain text for `.image` items. Populated by `ExtractTextAction`
+    /// (manual) or by `OCRIndex` (lazy/eager). `nil` means "not yet indexed".
+    var ocrText: String?
+
+    /// BCP-47 locale Vision was primed with when we ran OCR. Lets a future
+    /// re-index pass decide whether a stored `ocrText` is still useful after
+    /// a system-language change.
+    var ocrLocale: String?
+
+    /// Sentinel for "already OCR'd" that survives `ocrText` being empty
+    /// (genuine screenshot of a textless image). Consumers that need
+    /// "has been indexed?" check this rather than `ocrText != nil`.
+    var ocrIndexedAt: Date?
+
+    // MARK: - Epic 07 — Translation metadata
+
+    /// Present on derived translation items. Carries source/target language
+    /// pair and the original item ID so the UI can offer "show original".
+    var translationMeta: TranslationMeta?
+
     struct FileRef: Codable, Sendable, Hashable {
         var originalPath: String
         /// Relative to the bucket storage directory. Nil until the sidecar copy lands.
@@ -78,7 +112,13 @@ struct BucketItem: Identifiable, Codable, Sendable, Hashable {
         fileRef: FileRef? = nil,
         text: String? = nil,
         urlMeta: URLMetadata? = nil,
-        colorHex: String? = nil
+        colorHex: String? = nil,
+        derivedFromItemID: UUID? = nil,
+        derivedAction: String? = nil,
+        ocrText: String? = nil,
+        ocrLocale: String? = nil,
+        ocrIndexedAt: Date? = nil,
+        translationMeta: TranslationMeta? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -92,7 +132,27 @@ struct BucketItem: Identifiable, Codable, Sendable, Hashable {
         self.text = text
         self.urlMeta = urlMeta
         self.colorHex = colorHex
+        self.derivedFromItemID = derivedFromItemID
+        self.derivedAction = derivedAction
+        self.ocrText = ocrText
+        self.ocrLocale = ocrLocale
+        self.ocrIndexedAt = ocrIndexedAt
+        self.translationMeta = translationMeta
     }
+}
+
+/// Epic 07 — per-item translation provenance. Lives on the derived (translated)
+/// item, not the source. Decoded with `decodeIfPresent` so older snapshots
+/// that predate translation load cleanly.
+struct TranslationMeta: Codable, Sendable, Hashable {
+    /// BCP-47 language code the translator detected, or `nil` if we couldn't
+    /// get high-confidence detection and fell back to `Locale.current`.
+    var detectedSourceLang: String?
+    /// BCP-47 language code the user picked as the target.
+    var targetLang: String
+    /// The bucket item that was translated (preserved across clear-all only
+    /// if the original is pinned).
+    var sourceItemID: UUID
 }
 
 // MARK: - Bucket
@@ -184,6 +244,19 @@ struct BucketManifestV2: Codable, Sendable {
 
 // MARK: - Settings
 
+/// Epic 07 — when to run Vision OCR against image items so they're findable
+/// via `BucketManager.search`. See PRD §OCR Indexing for the trade-off table.
+enum OCRIndexingMode: String, Codable, Sendable, CaseIterable {
+    /// OCR every image as it lands in the bucket. Highest CPU cost, instant search.
+    case eager
+    /// OCR only when the user searches (batched via `TaskGroup`, results cached).
+    /// Default — balances battery with the "searchable screenshots" wow moment.
+    case lazy
+    /// Never OCR automatically; only when the user clicks "Extract text".
+    /// Matches Dropover's behavior and the pre-Epic-07 baseline.
+    case manual
+}
+
 struct BucketSettings: Codable, Sendable {
     var maxItems: Int
     var maxStorageBytes: Int64
@@ -201,6 +274,8 @@ struct BucketSettings: Codable, Sendable {
     /// Floor of 0.10 is enforced by the settings slider — never store a
     /// smaller value or the window becomes unclickable.
     var backgroundOpacity: Double
+    /// Epic 07 — OCR indexing policy for image items.
+    var ocrIndexingMode: OCRIndexingMode
 
     init(
         maxItems: Int = 200,
@@ -213,7 +288,8 @@ struct BucketSettings: Codable, Sendable {
         quickPasteHotkey: HotkeyBinding = HotkeyBinding(key: "V", modifiers: [.command, .shift]),
         quickPasteCount: Int = 5,
         autoRouteRules: [AutoRouteRule] = [],
-        backgroundOpacity: Double = 0.10
+        backgroundOpacity: Double = 0.10,
+        ocrIndexingMode: OCRIndexingMode = .lazy
     ) {
         self.maxItems = maxItems
         self.maxStorageBytes = maxStorageBytes
@@ -226,6 +302,7 @@ struct BucketSettings: Codable, Sendable {
         self.quickPasteCount = quickPasteCount
         self.autoRouteRules = autoRouteRules
         self.backgroundOpacity = backgroundOpacity
+        self.ocrIndexingMode = ocrIndexingMode
     }
 
     /// Forward-compatible decoding: any future field added here MUST have a default
@@ -247,6 +324,7 @@ struct BucketSettings: Codable, Sendable {
         self.quickPasteCount = try c.decodeIfPresent(Int.self, forKey: .quickPasteCount) ?? 5
         self.autoRouteRules = try c.decodeIfPresent([AutoRouteRule].self, forKey: .autoRouteRules) ?? []
         self.backgroundOpacity = try c.decodeIfPresent(Double.self, forKey: .backgroundOpacity) ?? 0.10
+        self.ocrIndexingMode = try c.decodeIfPresent(OCRIndexingMode.self, forKey: .ocrIndexingMode) ?? .lazy
     }
 }
 
