@@ -112,7 +112,8 @@ final class BucketWindow: NSPanel, NSWindowDelegate {
             onClose: { [weak self] in self?.orderOut(nil) },
             applyWindowAlpha: { [weak self] alpha in
                 self?.alphaValue = CGFloat(alpha)
-            }
+            },
+            onToggleCollapse: { [weak self] in self?.toggleCollapse() }
         )
         // NSHostingView installation requires care to avoid two separate
         // regressions that bit us during Epic 07:
@@ -205,6 +206,13 @@ final class BucketWindow: NSPanel, NSWindowDelegate {
             guard wasInProgress, !didDrag,
                   isVisible, isCollapsed, isKeyWindow
             else { return }
+            // Auto-expand-on-click is a sibling of the `becomeKey` auto-expand
+            // — we gate both on the same toggle so the manual collapse chevron
+            // isn't fighting a same-event re-expand.
+            guard autoCollapseEnabled else {
+                Log.bucketCollapse.debug("sendEvent click-to-expand skipped — auto-collapse disabled by user")
+                return
+            }
             // Dispatch async so `performDrag` (if it was running) fully
             // returns before we start a frame animation.
             DispatchQueue.main.async { [weak self] in
@@ -233,6 +241,15 @@ final class BucketWindow: NSPanel, NSWindowDelegate {
 
     // MARK: - Auto-collapse on focus change (Epic 07 follow-up)
 
+    /// Reads `DefaultsKey.bucketAutoCollapseEnabled`, defaulting to true so
+    /// existing users see the Epic 07 behaviour unchanged. When false, both
+    /// auto-directions (`becomeKey` expand and `resignKey` collapse) are
+    /// short-circuited — the user drives state changes with the header
+    /// chevron button instead.
+    private var autoCollapseEnabled: Bool {
+        UserDefaults.standard.object(forKey: DefaultsKey.bucketAutoCollapseEnabled) as? Bool ?? true
+    }
+
     /// When the bucket gains focus (user clicked in / hotkey'd it / started
     /// typing in search), expand to the user's preferred height.
     ///
@@ -245,6 +262,12 @@ final class BucketWindow: NSPanel, NSWindowDelegate {
             "becomeKey fired: isVisible=\(self.isVisible, privacy: .public) isCollapsed=\(self.isCollapsed, privacy: .public) expandedHeight=\(self.expandedHeight, privacy: .public) frame=\(String(describing: self.frame), privacy: .public) clickInProgress=\(self.clickInProgress, privacy: .public)"
         )
         guard isVisible else { return }
+        // Auto-expand disabled by the user — their manual collapse sticks
+        // until they click the header chevron.
+        guard autoCollapseEnabled else {
+            Log.bucketCollapse.debug("becomeKey skipped — auto-collapse disabled by user")
+            return
+        }
         // Defer expand while a click is in progress — the user may be about
         // to drag the window by the header. `sendEvent`'s leftMouseUp path
         // decides whether to expand once the click completes, based on
@@ -269,7 +292,26 @@ final class BucketWindow: NSPanel, NSWindowDelegate {
             "resignKey fired: isVisible=\(self.isVisible, privacy: .public) isCollapsed=\(self.isCollapsed, privacy: .public) expandedHeight=\(self.expandedHeight, privacy: .public) frame=\(String(describing: self.frame), privacy: .public)"
         )
         guard isVisible else { return }
+        guard autoCollapseEnabled else {
+            Log.bucketCollapse.debug("resignKey skipped — auto-collapse disabled by user")
+            return
+        }
+        // Skip auto-collapse when key is transferring to a sheet we own —
+        // collapsing unmounts the card hosting the sheet's @State, which
+        // would dismiss the sheet on the same frame it tries to appear
+        // (the Translate sheet was the visible casualty).
+        if attachedSheet != nil || NSApp.keyWindow?.sheetParent === self {
+            Log.bucketCollapse.debug("resignKey skipped — attached sheet present")
+            return
+        }
         applyCollapseState(true, animate: true)
+    }
+
+    /// Manually flip between collapsed and expanded. Called from the header
+    /// chevron button that appears when auto-collapse is disabled. Does not
+    /// consult `autoCollapseEnabled` — the button is the explicit user intent.
+    func toggleCollapse() {
+        applyCollapseState(!isCollapsed, animate: true)
     }
 
     /// Core state transition. Idempotent — repeated calls with the same
@@ -437,8 +479,12 @@ private struct BucketWindowContent: View {
     /// `BucketWindow` forwards this to `NSPanel.alphaValue` so the whole
     /// window (including VisualEffect) becomes see-through at low values.
     let applyWindowAlpha: (Double) -> Void
+    /// Flips the NSWindow between collapsed and expanded. Used by the header
+    /// chevron that appears when auto-collapse is off.
+    let onToggleCollapse: () -> Void
 
     @AppStorage(DefaultsKey.theme) private var theme = "dark"
+    @AppStorage(DefaultsKey.bucketAutoCollapseEnabled) private var autoCollapseEnabled: Bool = true
     @Environment(\.colorScheme) private var colorScheme
     /// Epic 07 follow-up — mirrors `BucketWindow.isCollapsed`. Updated via
     /// `.bucketWindowCollapseChanged` so the SwiftUI layer hides the item
@@ -529,6 +575,18 @@ private struct BucketWindowContent: View {
                     .monospacedDigit()
             }
             Spacer()
+            if !autoCollapseEnabled {
+                Button {
+                    onToggleCollapse()
+                } label: {
+                    Image(systemName: isCollapsed ? "chevron.down" : "chevron.up")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 20, height: 20)
+                }
+                .buttonStyle(.plain)
+                .help(isCollapsed ? "Expand" : "Collapse")
+            }
             Button {
                 onClose()
             } label: {

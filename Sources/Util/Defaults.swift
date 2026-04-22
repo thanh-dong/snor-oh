@@ -53,6 +53,11 @@ enum DefaultsKey {
     /// `bucketWindowHeight` (which tracks the *current* frame height, and
     /// temporarily drops to the collapsed value while hidden).
     static let bucketExpandedHeight = "bucketExpandedHeight"
+    /// Whether the bucket window auto-collapses on focus loss and auto-expands
+    /// on focus gain. Default: true. When false, the window only changes
+    /// between collapsed and expanded via the manual chevron button in the
+    /// header — its visibility is gated on this setting being off.
+    static let bucketAutoCollapseEnabled = "bucketAutoCollapseEnabled"
 
     // MARK: - Away Digest feature (A9)
     /// Whether the away-digest summary is enabled. Default: true.

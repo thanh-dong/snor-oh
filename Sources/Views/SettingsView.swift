@@ -122,6 +122,22 @@ struct BucketTab: View {
         )
     }
 
+    /// Window-chrome preference — `BucketWindow` reads the same UserDefaults
+    /// key directly in `becomeKey`/`resignKey` rather than plumbing it through
+    /// `BucketSettings`, so this binding is a plain UserDefaults accessor.
+    private var autoCollapseBinding: Binding<Bool> {
+        Binding(
+            get: {
+                UserDefaults.standard.object(
+                    forKey: DefaultsKey.bucketAutoCollapseEnabled
+                ) as? Bool ?? true
+            },
+            set: { new in
+                UserDefaults.standard.set(new, forKey: DefaultsKey.bucketAutoCollapseEnabled)
+            }
+        )
+    }
+
     var body: some View {
         Form {
             Section("Clipboard Capture") {
@@ -243,6 +259,16 @@ struct BucketTab: View {
                         .frame(width: 44, alignment: .trailing)
                 }
                 Text("Lower to see through the bucket while keeping it on screen. Text dims with the window.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Behavior") {
+                Toggle(
+                    "Auto-collapse when focus moves away",
+                    isOn: autoCollapseBinding
+                )
+                Text("When off, the bucket stays in whichever state you leave it. A chevron appears in the header so you can collapse or expand it on demand.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
