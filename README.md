@@ -99,10 +99,6 @@ Derived items (resized photos, OCR'd text, translations) land **right beside the
 
 **Custom Pets** — unlimited custom pets via Smart Import or `.snoroh` file import. Stored at `~/.snor-oh/custom-ohhs.json` + `~/.snor-oh/custom-sprites/`.
 
-**Marketplace** — [**snor-oh.vercel.app**](https://snor-oh.vercel.app). Browse and download community pets, or upload your own directly from **Settings → Ohh → Share to Marketplace**. One-click install: the marketplace page opens a `snoroh://install?id=…` deep link that lands the pet straight into your app (with a plain-zip fallback for users who haven't installed snor-oh yet).
-
-**Peer Discovery** — finds other snor-oh instances on LAN via Bonjour. Visit peers — your mascot appears on their screen.
-
 ### ⚙️ Settings tabs
 
 **General** (theme, glow, size, MCP install/uninstall, welcome-back toggle + threshold) · **Ohh** (pet selection, display scale, Smart Import, .snoroh export/import, marketplace upload) · **Bucket** (clipboard capture, ignored apps, capacity, OCR indexing mode, per-bucket routing rules) · **Claude Code** (plugin/skill/command/MCP/hook manager) · **About**.
